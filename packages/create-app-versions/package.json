@@ -4,7 +4,7 @@
   "private": true,
   "description": "Used to track dependency versions in create-fumadocs-app",
   "dependencies": {
-    "@biomejs/biome": "^2.6.2",
+    "@biomejs/biome": "^2.6.3",
     "@mixedbread/sdk": "^0.78.0",
     "@orama/core": "^1.2.19",
     "algoliasearch": "^5.60.0",
