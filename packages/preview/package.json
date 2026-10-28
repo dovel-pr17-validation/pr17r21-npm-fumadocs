@@ -38,7 +38,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@ai-sdk/react": "^4.0.152",
+    "@ai-sdk/react": "^4.0.158",
     "@fumadocs/ai-chat": "workspace:*",
     "@fumadocs/vite": "workspace:*",
     "@hono/node-server": "^2.1.5",
