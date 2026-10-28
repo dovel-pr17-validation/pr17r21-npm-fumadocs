@@ -1,0 +1,269 @@
+'use client';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import {
+  DataEngine,
+  type DataEngineListener,
+  type DefaultValue,
+  type FieldKey,
+  type OnDeleteContext,
+  type OnInitContext,
+  type OnUpdateContext,
+  type Stf,
+} from '@fumari/stf';
+import type { JsonSchema } from '@fumadocs/json-schema';
+import { useExampleRequests, useOperation } from '@/operation';
+import { pathnameFromRequest } from '@/requests/generators';
+import { encodeRequestData } from '@/requests/media/encode';
+import type { RawRequestData } from '@/requests/types';
+import { useOpenAPI } from '@/utils/create-page';
+import { getPreferredType } from '@/utils/schema';
+import { useServer } from '@/utils/use-server';
+import {
+  type AuthField,
+  type AuthProvider,
+  type AuthRequirement,
+  type OAuthFlowInput,
+  type OAuthFlowType,
+  requestOAuthToken,
+  useAuthFields,
+  usePlaygroundAuth,
+} from './auth';
+import { type BrowserFetcherOptions, createBrowserFetcher, type FetchResult } from './fetcher';
+
+/** the form of a playground, its `auth` is the auth values of page */
+class PlaygroundForm extends DataEngine {
+  private readonly auth: DataEngine;
+
+  constructor(defaultValues: NonNullable<object>, auth: DataEngine) {
+    super(defaultValues);
+    this.auth = auth;
+  }
+
+  override get(key: FieldKey) {
+    return key[0] === 'auth' ? this.auth.get(key) : super.get(key);
+  }
+
+  override init(key: FieldKey, defaultValue?: DefaultValue, ctx?: OnInitContext) {
+    return key[0] === 'auth'
+      ? this.auth.init(key, defaultValue, ctx)
+      : super.init(key, defaultValue, ctx);
+  }
+
+  override update(key: FieldKey, value: unknown, ctx?: Partial<OnUpdateContext>) {
+    return key[0] === 'auth' ? this.auth.update(key, value, ctx) : super.update(key, value, ctx);
+  }
+
+  override delete(key: FieldKey, ctx?: OnDeleteContext) {
+    return key[0] === 'auth' ? this.auth.delete(key, ctx) : super.delete(key, ctx);
+  }
+
+  override listen(listener: DataEngineListener) {
+    const [root] = listener.field ?? [];
+    if (root !== 'auth') super.listen(listener);
+    if (root === undefined || root === 'auth') this.auth.listen(listener);
+  }
+
+  override unlisten(listener: DataEngineListener) {
+    super.unlisten(listener);
+    this.auth.unlisten(listener);
+  }
+}
+
+export interface PlaygroundOptions {
+  /** handle security schemes, before the built-in providers */
+  authProviders?: AuthProvider[];
+  /** customise the auth fields, like their default values */
+  transformAuthInputs?: (fields: AuthField[]) => AuthField[];
+  fetchOptions?: BrowserFetcherOptions;
+}
+
+export interface RequestBodyInfo {
+  /** the preferred one of its media types */
+  mediaType: string;
+  schema: JsonSchema;
+}
+
+export interface PlaygroundAuth {
+  /** the security requirements of the operation, one of them authorizes the request */
+  requirements: AuthRequirement[][];
+  /** index of the selected requirement, `-1` when the operation needs no authorization */
+  selected: number;
+  select: (index: number) => void;
+  /** the fields of the selected requirement */
+  fields: AuthField[];
+  /**
+   * Obtain the access token of an OAuth 2.0 or OpenID Connect field, and write it into the field.
+   *
+   * `implicit` and `authorizationCode` leave the page without a token, the page finishes them when they return, and `flowReturned` is set.
+   */
+  authorize: (field: AuthField, input: OAuthInput) => Promise<string | undefined>;
+  /** a flow started here has returned to the page */
+  flowReturned: boolean;
+}
+
+export interface OAuthInput extends Pick<
+  OAuthFlowInput,
+  'clientId' | 'clientSecret' | 'username' | 'password' | 'clientAuth' | 'onUserCode' | 'signal'
+> {
+  type: OAuthFlowType;
+  /** defaults to the scopes required by the operation */
+  scopes?: string[];
+}
+
+export interface PlaygroundResponse {
+  /** unique among the responses of a playground */
+  id: number;
+  result: FetchResult;
+}
+
+export interface Playground {
+  /** the form, holding the `path`, `query`, `header`, `cookie` and `body` of request */
+  stf: Stf;
+  /** the request body edited in the form */
+  body?: RequestBodyInfo;
+  auth: PlaygroundAuth;
+  /** send the request of form */
+  send: () => Promise<void>;
+  isSending: boolean;
+  /** the response of last request */
+  response?: PlaygroundResponse;
+  clearResponse: () => void;
+}
+
+/**
+ * The state of an API playground under `<OperationProvider />`: a form starting from the selected example request, its auth and the request it sends.
+ *
+ * Edits are synced to the example request, so code usages follow them.
+ */
+export function usePlayground({
+  authProviders,
+  transformAuthInputs,
+  fetchOptions,
+}: PlaygroundOptions = {}): Playground {
+  const { mediaAdapters, proxyUrl, oauthRedirectUrl } = useOpenAPI();
+  const { path, method, operation, parameters: groups, requestBody } = useOperation();
+  const { items: examples, selected, update } = useExampleRequests();
+  const { resolveUrl } = useServer();
+  // where OAuth flows return to
+  const origin = `${method} ${path}`;
+  const page = usePlaygroundAuth();
+  // the scheme of a flow that left this playground, and returned
+  const returnedScheme = page.returned?.origin === origin ? page.returned.scheme : undefined;
+  const flowReturned = returnedScheme !== undefined;
+  const [response, setResponse] = useState<PlaygroundResponse>();
+  const [isSending, setSending] = useState(false);
+  let body: RequestBodyInfo | undefined;
+  if (requestBody) {
+    const mediaType = getPreferredType(requestBody.content)!;
+    body = { mediaType, schema: requestBody.content[mediaType].schema ?? true };
+  }
+
+  const defaultValues = useMemo(() => {
+    const data = examples.find((example) => example.id === selected)?.data;
+
+    return {
+      path: data?.path ?? {},
+      query: data?.query ?? {},
+      header: data?.header ?? {},
+      cookie: data?.cookie ?? {},
+      body: data?.body ?? {},
+    };
+  }, [examples, selected]);
+  const stf = useMemo<Stf>(
+    () => ({ dataEngine: new PlaygroundForm(defaultValues, page.stf.dataEngine) }),
+    [defaultValues, page.stf.dataEngine],
+  );
+  const engine = stf.dataEngine;
+  const auth = useAuthFields(engine, {
+    operation,
+    providers: authProviders,
+    transform: transformAuthInputs,
+  });
+
+  function getRequestData(): RawRequestData {
+    return auth.mapValues({
+      ...(engine.getData() as typeof defaultValues),
+      method,
+      bodyMediaType: body?.mediaType,
+    });
+  }
+
+  const syncExample = useEffectEvent(() => update(getRequestData()));
+
+  // select the requirement of the returned flow, also on the first render of client-rendered pages
+  const [selectedFor, setSelectedFor] = useState<string>();
+  if (returnedScheme !== selectedFor) {
+    setSelectedFor(returnedScheme);
+    const idx = auth.requirements.findIndex((req) =>
+      req.some((item) => item.id === returnedScheme),
+    );
+    if (idx !== -1) auth.select(idx);
+  }
+
+  const initAuth = auth.init;
+  // restore the auth values, then sync the edits with a delay
+  useEffect(() => {
+    const reset = initAuth();
+    syncExample();
+    let timer: number | undefined;
+    const listener: DataEngineListener = {
+      onUpdate() {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(syncExample, 400);
+      },
+    };
+
+    engine.listen(listener);
+    return () => {
+      engine.unlisten(listener);
+      window.clearTimeout(timer);
+      reset();
+    };
+  }, [engine, initAuth]);
+
+  return {
+    stf,
+    body,
+    auth: {
+      requirements: auth.requirements,
+      selected: auth.selected,
+      select: auth.select,
+      fields: auth.fields,
+      async authorize(field, { type, scopes = field.scopes, ...input }) {
+        const token = await requestOAuthToken(field.scheme, type, {
+          ...input,
+          scopes,
+          schemeId: field.schemeId,
+          serverUrl: resolveUrl(),
+          redirectUrl: oauthRedirectUrl,
+          proxyUrl,
+          origin,
+        });
+        if (token) engine.update(field.fieldName, token);
+        return token;
+      },
+      flowReturned,
+    },
+    isSending,
+    response,
+    async send() {
+      if (isSending) return;
+      setSending(true);
+      const parameters = groups.flatMap((group) => group.items);
+      let result: FetchResult;
+      try {
+        const data = encodeRequestData(getRequestData(), mediaAdapters, parameters);
+        const fetcher = createBrowserFetcher(mediaAdapters, { proxyUrl, ...fetchOptions });
+        result = await fetcher.fetch(resolveUrl(pathnameFromRequest(path, data)), data);
+      } catch (e) {
+        result = { type: 'client_error', url: path, message: String(e) };
+      }
+
+      setResponse((prev) => ({ id: (prev?.id ?? 0) + 1, result }));
+      setSending(false);
+    },
+    clearResponse() {
+      setResponse(undefined);
+    },
+  };
+}

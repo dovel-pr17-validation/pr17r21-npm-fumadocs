@@ -1,0 +1,569 @@
+'use client';
+import { Fragment, type ReactNode, useState } from 'react';
+import { Dialog } from '@base-ui/react/dialog';
+import type { MediaTypeObject, SecuritySchemeObject } from '@/types';
+import { RequestTabs, UsageTabs } from '@/ui/operation/usage-tabs';
+import { MethodLabel } from '@/ui/components/method-label';
+import { SchemaUI } from '@/ui/components/schema';
+import { Badge } from 'shared-api/components/badge';
+import { useOpenAPI, useRenderContext } from '@/utils/create-page';
+import {
+  OperationProvider,
+  type OperationCallback,
+  type OperationResponse,
+  type PageOperationProps,
+  useOperation,
+} from '@/operation';
+import { useTranslations } from '@fuma-translate/react';
+import { cn } from '@/utils/cn';
+import { SelectTabs, SelectTabTrigger, SelectTab } from 'shared-api/components/select-tab';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { AnchorSection, useAnchorLink } from 'shared-api/auto-anchor';
+import { Heading } from '@/ui/components/heading';
+import { Markdown } from '../components/markdown';
+import { buttonVariants } from 'fumadocs-ui/components/ui/button';
+import { ChevronRight, Plus, X } from 'lucide-react';
+import { CopyTypeScript } from 'shared-api/components/copy-typescript';
+import PlaygroundClient from '@/ui/playground/client';
+import { EndpointBar } from '@/ui/components/endpoint';
+import { Segmented, SegmentedList, SegmentedPanel } from 'shared-api/components/segmented';
+import { DialogPopup } from 'shared-api/components/dialog';
+
+export interface OperationProps extends PageOperationProps {
+  headingLevel?: number;
+}
+
+export function Operation({ type, path, method, operation, pathItem, ...props }: OperationProps) {
+  return (
+    <OperationProvider
+      type={type}
+      path={path}
+      method={method}
+      operation={operation}
+      pathItem={pathItem}
+    >
+      <OperationContent {...props} />
+    </OperationProvider>
+  );
+}
+
+function OperationContent({
+  showTitle,
+  showDescription,
+  headingLevel = 2,
+}: Pick<OperationProps, 'showTitle' | 'showDescription' | 'headingLevel'>) {
+  const t = useTranslations({ note: 'operation page' });
+  const { resolve } = useOpenAPI().doc;
+  const ctx = useRenderContext();
+  const {
+    type,
+    path,
+    method,
+    operation,
+    pathItem,
+    title,
+    description,
+    requestBody,
+    parameters,
+    security,
+    responses,
+    callbacks,
+  } = useOperation();
+  let headNode: ReactNode = null;
+  const descriptionNode = showDescription && description && <Markdown md={description} />;
+  let bodyNode: ReactNode = null;
+  let authNode: ReactNode = null;
+  let responseNode: ReactNode = null;
+  let callbacksNode: ReactNode = null;
+
+  if (showTitle) {
+    headNode = (
+      <div className="flex gap-2 items-center justify-between">
+        <Heading id={title} depth={headingLevel} className="my-0!">
+          {title}
+        </Heading>
+        {operation.deprecated && (
+          <Badge color="yellow" className="text-xs not-prose">
+            {t('Deprecated')}
+          </Badge>
+        )}
+      </div>
+    );
+    headingLevel++;
+  } else if (operation.deprecated) {
+    headNode = <Callout type="warn" title={t('Deprecated')} className="mt-0!" />;
+  }
+
+  if (requestBody) {
+    const contentTypes = Object.entries(requestBody.content);
+    const items = contentTypes.map(([mediaType]) => ({
+      label: <code>{mediaType}</code>,
+      value: mediaType,
+    }));
+
+    bodyNode = (
+      <SelectTabs defaultValue={items[0].value}>
+        <SectionHeader id="request-body" depth={headingLevel} title={t('Request Body')} />
+        {requestBody.description && (
+          <div className="mb-3 prose-no-margin text-fd-muted-foreground">
+            <Markdown md={requestBody.description} />
+          </div>
+        )}
+        {contentTypes.map(([mediaType, content]) => (
+          <SelectTab key={mediaType} anchorSegments={['request-body', mediaType]} value={mediaType}>
+            <MediaContent
+              schema={content.schema}
+              required={requestBody.required}
+              selector={<SelectTabTrigger items={items} />}
+              request
+            />
+          </SelectTab>
+        ))}
+      </SelectTabs>
+    );
+  }
+
+  if (responses.length > 0 && ctx.showResponseSchema !== false) {
+    responseNode = <ResponseSection responses={responses} headingLevel={headingLevel} />;
+  }
+
+  const parameterNode = parameters.map(({ in: location, items }) => {
+    const parameterLabel =
+      location === 'path'
+        ? t('Path Parameters')
+        : location === 'query'
+          ? t('Query Parameters')
+          : location === 'header'
+            ? t('Header Parameters')
+            : t('Cookie Parameters');
+
+    return (
+      <Fragment key={location}>
+        <SectionHeader id={`parameters-${location}`} depth={headingLevel} title={parameterLabel} />
+        <AnchorSection segments={['parameters', location]}>
+          <div className="rounded-xl border bg-fd-card px-3">
+            {items.map((param) => {
+              if (param.schema == null) return;
+              const schema = resolve(param.schema);
+
+              return (
+                <SchemaUI
+                  key={param.name}
+                  client={{
+                    name: param.name,
+                    required: param.required,
+                  }}
+                  root={
+                    typeof schema === 'object'
+                      ? {
+                          ...schema,
+                          description: param.description ?? schema.description,
+                          deprecated: (param.deprecated ?? false) || (schema.deprecated ?? false),
+                        }
+                      : schema
+                  }
+                  readOnly={method === 'get'}
+                  writeOnly={method !== 'get'}
+                />
+              );
+            })}
+          </div>
+        </AnchorSection>
+      </Fragment>
+    );
+  });
+
+  if (security.length > 0) {
+    const items = security.map((requirement, i) => ({
+      value: String(i),
+      label: (
+        <code className="flex min-w-0 items-center gap-1">
+          {requirement.map(({ key, scopes }, j) => (
+            <Fragment key={key}>
+              {j > 0 && <Plus className="size-3 shrink-0 text-fd-muted-foreground" />}
+              <span className="truncate">
+                {key}
+                {scopes.length > 0 && (
+                  <span className="text-fd-muted-foreground"> {scopes.join(', ')}</span>
+                )}
+              </span>
+            </Fragment>
+          ))}
+        </code>
+      ),
+    }));
+
+    authNode = (
+      <SelectTabs defaultValue={items[0].value}>
+        <SectionHeader id="authorization" depth={headingLevel} title={t('Authorization')} />
+        <div className="overflow-hidden rounded-xl border bg-fd-card">
+          <div className="flex h-9 items-center border-b ps-1.5 pe-1 text-[0.8125rem] not-prose">
+            <SelectTabTrigger items={items} />
+          </div>
+          {security.map((requirement, i) => (
+            <SelectTab key={i} value={items[i].value} className="px-3">
+              {requirement.map(
+                ({ key, scopes, scheme }) =>
+                  scheme && <AuthScheme key={key} scheme={scheme} scopes={scopes} />,
+              )}
+            </SelectTab>
+          ))}
+        </div>
+      </SelectTabs>
+    );
+  }
+
+  if (callbacks.length > 0) {
+    callbacksNode = (
+      <>
+        <SectionHeader id="callbacks" depth={headingLevel} title={t('Callbacks')} />
+        <div className="overflow-hidden rounded-xl border bg-fd-card not-prose">
+          {callbacks.map((item, i) => (
+            <Callback key={i} item={item} path={path} headingLevel={headingLevel + 1} />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (type === 'operation') {
+    const playground = ctx.playground;
+    let apiPlayground: ReactNode;
+    if (playground?.enabled ?? true) {
+      const { enabled: _, render, ...options } = playground ?? {};
+      apiPlayground = render ? (
+        render({ path, method, operation, pathItem })
+      ) : (
+        <PlaygroundClient {...options} />
+      );
+    } else {
+      apiPlayground = (
+        <EndpointBar method={method} route={path} deprecated={operation.deprecated} />
+      );
+    }
+
+    const slots = {
+      header: headNode,
+      description: descriptionNode,
+      authSchemes: authNode,
+      body: bodyNode,
+      callbacks: callbacksNode,
+      parameters: parameterNode,
+      responses: responseNode,
+      apiPlayground,
+      apiExample: <UsageTabs />,
+    };
+
+    if (ctx.content?.renderOperationLayout)
+      return ctx.content.renderOperationLayout(slots, { path, operation, method, pathItem, ctx });
+
+    return (
+      <div className="flex flex-col gap-x-6 gap-y-4 @4xl:flex-row @4xl:items-start">
+        <div className="min-w-0 flex-1">
+          {slots.header}
+          {slots.apiPlayground}
+          {slots.description}
+          {slots.authSchemes}
+          {slots.parameters}
+          {slots.body}
+          {slots.responses}
+          {slots.callbacks}
+        </div>
+        <div className="@4xl:sticky @4xl:top-[calc(var(--fd-docs-row-3,0px)+1rem)] @4xl:flex @4xl:max-h-[calc(var(--fd-docs-height,100dvh)-var(--fd-docs-row-3,0px)-2rem)] @4xl:w-[400px] @4xl:flex-col">
+          {slots.apiExample}
+        </div>
+      </div>
+    );
+  }
+
+  const slots = {
+    header: headNode,
+    description: descriptionNode,
+    authSchemes: authNode,
+    body: bodyNode,
+    callbacks: callbacksNode,
+    parameters: parameterNode,
+    responses: responseNode,
+    requests: <RequestTabs />,
+  };
+
+  if (ctx.content?.renderWebhookLayout) return ctx.content.renderWebhookLayout(slots);
+
+  return (
+    <div className="flex flex-col-reverse gap-x-6 gap-y-4 @4xl:flex-row @4xl:items-start">
+      <div className="min-w-0 flex-1 prose-no-margin">
+        {slots.header}
+        {slots.description}
+        {slots.authSchemes}
+        {slots.parameters}
+        {slots.body}
+        {slots.responses}
+        {slots.callbacks}
+      </div>
+      <div className="@4xl:sticky @4xl:top-[calc(var(--fd-docs-row-3,0px)+1rem)] @4xl:flex @4xl:max-h-[calc(var(--fd-docs-height,100dvh)-var(--fd-docs-row-3,0px)-2rem)] @4xl:w-[400px] @4xl:flex-col">
+        {slots.requests}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({
+  id,
+  depth,
+  title,
+  children,
+}: {
+  id: string;
+  depth: number;
+  title: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-10 mb-3 first:mt-0">
+      <Heading id={id} depth={depth} className="my-0! me-auto">
+        {title}
+      </Heading>
+      {children}
+    </div>
+  );
+}
+
+/** the schema of a request body or response in a media type */
+function MediaContent({
+  schema,
+  required,
+  selector,
+  request = false,
+}: {
+  schema: MediaTypeObject['schema'];
+  required?: boolean;
+  selector: ReactNode;
+  request?: boolean;
+}) {
+  const { method } = useOperation();
+  const { doc, generateTypeScriptDefinitions } = useOpenAPI();
+
+  if (!schema)
+    return (
+      <div className="not-prose flex h-9 items-center rounded-xl border bg-fd-card ps-1.5 pe-1 text-[0.8125rem]">
+        {selector}
+      </div>
+    );
+
+  return (
+    <SchemaUI
+      client={{
+        name: request ? 'body' : 'response',
+        as: 'body',
+        required,
+        selector,
+        actions: generateTypeScriptDefinitions && (
+          <CopyTypeScript
+            name={request ? 'request body' : 'response body'}
+            generate={() =>
+              generateTypeScriptDefinitions(schema, {
+                name: request ? 'RequestBody' : 'ResponseBody',
+                readOnly: !request,
+                writeOnly: request,
+                doc,
+              })
+            }
+          />
+        ),
+      }}
+      root={schema}
+      readOnly={!request || method === 'get'}
+      writeOnly={request && method !== 'get'}
+    />
+  );
+}
+
+function ResponseSection({
+  responses,
+  headingLevel,
+}: {
+  responses: OperationResponse[];
+  headingLevel: number;
+}) {
+  const t = useTranslations({ note: 'operation page' });
+  const [selected, setSelected] = useState(responses[0].status);
+
+  return (
+    <Segmented value={selected} onValueChange={setSelected} className="mt-10 first:mt-0">
+      <SectionHeader id="response-body" depth={headingLevel} title={t('Response Body')}>
+        <SegmentedList
+          className="max-w-full overflow-x-auto font-mono [scrollbar-width:none]"
+          items={responses.map((item) => ({ value: item.status, label: item.status }))}
+        />
+      </SectionHeader>
+      {responses.map((item) => (
+        <ResponseContent key={item.status} item={item} onLink={() => setSelected(item.status)} />
+      ))}
+    </Segmented>
+  );
+}
+
+function ResponseContent({
+  item: { status, response, content },
+  onLink,
+}: {
+  item: OperationResponse;
+  onLink: () => void;
+}) {
+  const segments = ['response', status];
+  const ref = useAnchorLink(segments, onLink);
+  const contentTypes = Object.entries(content);
+  const items = contentTypes.map(([mediaType]) => ({
+    label: <code>{mediaType}</code>,
+    value: mediaType,
+  }));
+
+  return (
+    <SegmentedPanel value={status} ref={ref}>
+      <AnchorSection segments={segments}>
+        <SelectTabs defaultValue={items[0]?.value}>
+          {response.description && (
+            <div className="mb-3 prose-no-margin text-fd-muted-foreground">
+              <Markdown md={response.description} />
+            </div>
+          )}
+          {contentTypes.map(([mediaType, media]) => (
+            <SelectTab key={mediaType} value={mediaType} anchorSegments={[mediaType]}>
+              <MediaContent schema={media.schema} selector={<SelectTabTrigger items={items} />} />
+            </SelectTab>
+          ))}
+        </SelectTabs>
+      </AnchorSection>
+    </SegmentedPanel>
+  );
+}
+
+function AuthScheme({ scheme, scopes }: { scheme: SecuritySchemeObject; scopes: string[] }) {
+  const t = useTranslations({ note: 'security scheme' });
+  let name = t('Authorization');
+  let type: string | undefined = t('Bearer <token>');
+  let location = 'header';
+  const configUrl = scheme.type === 'openIdConnect' ? scheme.openIdConnectUrl : undefined;
+
+  switch (scheme.type) {
+    case 'apiKey':
+      name = scheme.name!;
+      type = '<token>';
+      location = scheme.in!;
+      break;
+    case 'mutualTLS':
+      name = t('Client certificate');
+      type = undefined;
+      location = 'tls';
+      break;
+    case 'http': {
+      // case-insensitive, see RFC 7235
+      const auth = scheme.scheme?.toLowerCase();
+      if (auth === 'basic') type = t('Basic <token>');
+      else if (auth === 'bearer' && scheme.bearerFormat) type = `Bearer <${scheme.bearerFormat}>`;
+      else if (scheme.scheme && auth !== 'bearer')
+        type = `${scheme.scheme[0].toUpperCase()}${scheme.scheme.slice(1)} <token>`;
+      break;
+    }
+    case 'oauth2':
+    case 'openIdConnect':
+      break;
+    default:
+      return null;
+  }
+
+  return (
+    <div className="border-t py-2.5 first:border-t-0">
+      <div className="flex flex-wrap items-center gap-2 not-prose">
+        <span className="rounded-md border bg-fd-secondary px-1.5 font-mono text-xs leading-5 text-fd-muted-foreground">
+          {location}
+        </span>
+        <code className="text-[0.8125rem] font-medium text-fd-primary">{name}</code>
+        {type && <code className="text-xs text-fd-muted-foreground">{type}</code>}
+        {scheme.deprecated && (
+          <Badge color="red" className="text-xs">
+            {t('Deprecated')}
+          </Badge>
+        )}
+      </div>
+      {(scheme.description || scopes.length > 0 || configUrl) && (
+        <div className="mt-1 prose-no-margin text-fd-muted-foreground">
+          {scheme.description && <Markdown md={scheme.description} />}
+          {configUrl && (
+            <p>
+              {t('OpenID Connect')}: <code>{configUrl}</code>
+            </p>
+          )}
+          {scopes.length > 0 && (
+            <p>
+              {t('Scope')}: <code>{scopes.join(', ')}</code>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Callback({
+  item,
+  path,
+  headingLevel,
+}: {
+  item: OperationCallback;
+  path: string;
+  headingLevel: number;
+}) {
+  const t = useTranslations({ note: 'operation page' });
+  const segments = ['callbacks', item.name, item.path, item.method];
+  const [open, setOpen] = useState(false);
+  const ref = useAnchorLink(segments, () => setOpen(true));
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-1 border-t px-4 py-3 text-start transition-colors first:border-t-0 hover:bg-fd-accent/40 focus-visible:bg-fd-accent/40 focus-visible:outline-none">
+        <span className="col-span-2 font-mono text-[0.8125rem] font-medium">{item.name}</span>
+        <ChevronRight className="row-span-2 ms-1 size-4 self-center text-fd-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
+        <MethodLabel className="text-xs">{item.method}</MethodLabel>
+        <code className="text-xs wrap-anywhere text-fd-muted-foreground">{item.path}</code>
+      </Dialog.Trigger>
+      <DialogPopup className="sm:max-h-[min(52rem,calc(100dvh-3rem))] sm:w-[min(64rem,calc(100vw-3rem))]">
+        <div className="flex h-12 shrink-0 items-center gap-2 ps-4 pe-2 sm:ps-5">
+          <Dialog.Title className="truncate font-mono text-sm font-medium">
+            {item.name}
+          </Dialog.Title>
+          <Dialog.Close
+            aria-label={t('Close')}
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+              'ms-auto shrink-0 text-fd-muted-foreground',
+            )}
+          >
+            <X />
+          </Dialog.Close>
+        </div>
+        <EndpointBar
+          method={item.method}
+          route={item.path}
+          deprecated={item.operation.deprecated}
+          className="mx-3 mb-3 shrink-0 sm:mx-4"
+        />
+        <div
+          ref={ref}
+          className="fd-scroll-container prose prose-sm min-h-0 flex-1 overflow-y-auto border-t p-5 @container [--fd-docs-row-3:0px]"
+        >
+          <AnchorSection segments={segments}>
+            <Operation
+              type="webhook"
+              path={path}
+              headingLevel={headingLevel}
+              method={item.method}
+              pathItem={item.pathItem}
+              operation={item.operation}
+            />
+          </AnchorSection>
+        </div>
+      </DialogPopup>
+    </Dialog.Root>
+  );
+}

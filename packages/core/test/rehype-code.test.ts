@@ -1,0 +1,181 @@
+import { describe, expect, test } from 'vitest';
+import { remark } from 'remark';
+import remarkRehype from 'remark-rehype';
+import type { Element, Nodes, Root } from 'hast';
+import { rehypeCode } from '@/mdx-plugins';
+import { walk } from '@/mdx-plugins/utils';
+import { rehypeCodeFromHighlighter } from '@/mdx-plugins/rehype-code.core';
+import { createHighlights } from '@/highlight/highlights';
+
+async function process(source: string): Promise<Root> {
+  const processor = remark().use(remarkRehype).use(rehypeCode, { inline: 'tailing-curly-colon' });
+
+  return (await processor.run(processor.parse(source))) as Root;
+}
+
+/**
+ * Shiki emits `<span style="--shiki-light:...">` token elements, raw text
+ * doesn't. Counting them tells us whether the node was highlighted.
+ */
+function countTokens(tree: Root, tagName: 'pre' | 'code'): number {
+  let count = 0;
+
+  walk<Nodes>(tree, (node) => {
+    if (node.type !== 'element' || node.tagName !== tagName) return;
+    const classes = node.properties?.class ?? node.properties?.className;
+    if (!String(classes ?? '').includes('shiki')) return;
+
+    walk<Nodes>(node, (child) => {
+      if (child.type !== 'element') return;
+      if (child.tagName === 'span' && typeof child.properties?.style === 'string') count++;
+    });
+  });
+
+  return count;
+}
+
+describe('Rehype Code', () => {
+  test('highlights a top-level code block', async () => {
+    const tree = await process(['```ts', 'console.log("hello");', '```'].join('\n'));
+
+    expect(countTokens(tree, 'pre')).toBeGreaterThan(0);
+  });
+
+  // the visitor used to `return 'skip'` on every unmatched element, which
+  // aborted traversal of the entire subtree of the first wrapper element.
+  test.each([
+    ['list item', ['1. item', '', '   ```ts', '   console.log("hello");', '   ```'].join('\n')],
+    ['blockquote', ['> ```ts', '> console.log("hello");', '> ```'].join('\n')],
+  ])('highlights a code block nested inside a %s', async (_name, source) => {
+    const tree = await process(source);
+
+    expect(countTokens(tree, 'pre')).toBeGreaterThan(0);
+  });
+
+  test('highlights inline code nested inside a list item', async () => {
+    const tree = await process('1. item `console.log("hello"){:ts}`');
+
+    expect(countTokens(tree, 'code')).toBeGreaterThan(0);
+  });
+});
+
+function findPre(tree: Root): Element | undefined {
+  let pre: Element | undefined;
+  walk<Nodes>(tree, (node) => {
+    if (node.type === 'element' && node.tagName === 'pre') pre ??= node;
+  });
+  return pre;
+}
+
+describe('Rehype Code (custom highlighter)', () => {
+  const source = [
+    '```ts title="a.ts"',
+    'console.log("hello"); // [!code highlight]',
+    '```',
+    '',
+    '`console.log(1){:ts}`',
+    '',
+    '```unknown',
+    'plain',
+    '```',
+  ].join('\n');
+
+  test('a function is created with the transformers and icons of Fumadocs', async () => {
+    const processor = remark()
+      .use(remarkRehype)
+      .use(
+        rehypeCodeFromHighlighter,
+        ({ transformers }) => createHighlights({ shikiTransformers: transformers }),
+        { inline: 'tailing-curly-colon' },
+      );
+    const tree = await processor.run(processor.parse(source));
+
+    expect(countTokens(tree, 'pre')).toBeGreaterThan(0);
+    expect(countTokens(tree, 'code')).toBeGreaterThan(0);
+    expect(JSON.stringify(tree)).toContain('"highlighted"');
+    expect(findPre(tree)?.properties).toMatchObject({ title: 'a.ts', icon: expect.any(String) });
+  });
+
+  test('a notation on its own line marks the next line, like with Shiki', async () => {
+    const processor = remark()
+      .use(remarkRehype)
+      .use(rehypeCodeFromHighlighter, ({ transformers }) =>
+        createHighlights({ shikiTransformers: transformers }),
+      );
+    const tree = await processor.run(
+      processor.parse(
+        ['```js', 'const a = {', '  // [!code ++]', '  b: 1,', '};', '```'].join('\n'),
+      ),
+    );
+    const text = (node: Nodes): string =>
+      node.type === 'text'
+        ? node.value
+        : 'children' in node
+          ? node.children.map(text).join('')
+          : '';
+    const lines: string[] = [];
+    walk<Nodes>(tree, (node) => {
+      if (node.type !== 'element' || node.properties.class?.toString().split(/[ ,]/)[0] !== 'line')
+        return;
+      lines.push(`${node.properties.class}: ${text(node)}`);
+      return 'skip';
+    });
+
+    expect(lines).toEqual(['line: const a = {', 'line,diff,add:   b: 1,', 'line: };']);
+  });
+
+  test('a highlighter is used as it is', async () => {
+    const processor = remark().use(remarkRehype).use(rehypeCodeFromHighlighter, createHighlights());
+    const tree = await processor.run(processor.parse(source));
+
+    expect(countTokens(tree, 'pre')).toBeGreaterThan(0);
+    expect(JSON.stringify(tree)).not.toContain('"highlighted"');
+    expect(findPre(tree)?.properties).toMatchObject({ title: 'a.ts' });
+    expect(findPre(tree)?.properties.icon).toBeUndefined();
+  });
+
+  test('`_fd_prepare` hooks run before highlighting', async () => {
+    const loaded: string[][] = [];
+    const errors: unknown[] = [];
+    const processor = remark()
+      .use(remarkRehype)
+      .use(
+        rehypeCodeFromHighlighter,
+        ({ transformers }) => ({
+          ...createHighlights({ shikiTransformers: transformers }),
+          async loadLanguage(...langs: string[]) {
+            loaded.push(langs);
+          },
+        }),
+        {
+          transformers: [
+            {
+              async _fd_prepare(_code, options) {
+                if (options.meta) options.meta._prepared = true;
+                return ['php'];
+              },
+              pre(pre) {
+                pre.properties.prepared = this.options.meta?._prepared;
+              },
+            },
+          ],
+          parseMetaString(meta) {
+            if (meta === 'throw') throw new Error('invalid meta');
+            return {};
+          },
+          onError: (error) => errors.push(error),
+        },
+      );
+    const tree = await processor.run(processor.parse('```ts\na\n```\n\n```ts throw\nb\n```'));
+
+    expect(loaded).toEqual([['ts', 'php']]);
+    expect(errors).toEqual([new Error('invalid meta')]);
+    const prepared: unknown[] = [];
+    walk<Nodes>(tree, (node) => {
+      if (node.type === 'element' && node.tagName === 'pre')
+        prepared.push(node.properties.prepared);
+    });
+    // the code block with an error isn't highlighted
+    expect(prepared).toEqual([true, undefined]);
+  });
+});

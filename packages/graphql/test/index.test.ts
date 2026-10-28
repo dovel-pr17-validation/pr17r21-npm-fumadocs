@@ -1,0 +1,214 @@
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { describe, expect, test } from 'vitest';
+import { printSchema } from 'graphql';
+import { createGraphQL, type GraphQLPageData } from '@/server';
+import { buildSchemaFromSDL } from '@/utils/build-schema';
+
+const cwd = fileURLToPath(new URL('./', import.meta.url));
+
+function create() {
+  return createGraphQL({
+    input: {
+      store: path.join(cwd, './fixtures/store.graphql'),
+    },
+  });
+}
+
+describe('GraphQL source', () => {
+  test('per item, grouped by kind', async () => {
+    const source = await create().staticSource();
+
+    expect(
+      source.files.map((file) =>
+        file.type === 'page'
+          ? {
+              path: file.path,
+              title: file.data.title,
+              deprecated: (file.data as unknown as { deprecated?: boolean }).deprecated,
+              _graphql: (file.data as GraphQLPageData)._graphql,
+            }
+          : { path: file.path, meta: file.data },
+      ),
+    ).toMatchSnapshot();
+  });
+
+  test('page data & props', async () => {
+    const source = await create().staticSource();
+    const file = source.files.find((file) => file.path === 'queries/orders.mdx');
+
+    expect(file).toBeDefined();
+    expect(file!.type).toBe('page');
+    const data = file!.data as GraphQLPageData;
+
+    expect(data.toc).toEqual([]);
+    expect(data.structuredData).toMatchInlineSnapshot(`
+      {
+        "contents": [
+          {
+            "content": "List all orders.",
+            "heading": undefined,
+          },
+        ],
+        "headings": [],
+      }
+    `);
+
+    const props = data.getGraphQLPageProps();
+    expect(props.schema).toBe('store');
+    expect(props.items).toEqual([{ type: 'operation', kind: 'query', name: 'orders' }]);
+    expect(props.payload).not.toHaveProperty('examples');
+    // the SDL payload can be re-built into a schema on client side
+    const schema = buildSchemaFromSDL(props.payload.sdl!);
+    expect(schema.getQueryType()?.getFields().orders).toBeDefined();
+
+    // type pages are opt-in
+    expect(source.files.some((file) => file.path.startsWith('objects/'))).toBe(false);
+    const typeSource = await create().staticSource({ includeTypes: true });
+    const typeFile = typeSource.files.find((file) => file.path === 'objects/Order.mdx');
+    expect(typeFile).toBeDefined();
+    const typeProps = (typeFile!.data as GraphQLPageData).getGraphQLPageProps();
+    expect(typeProps.items).toEqual([{ type: 'type', kind: 'object', name: 'Order' }]);
+    // links are generated when the source is attached to a loader
+    expect(typeProps.payload.links).toBeUndefined();
+  });
+
+  test('page props without the SDL', async () => {
+    const input = { store: path.join(cwd, './fixtures/store.graphql') };
+    const { files } = await createGraphQL({ input, includeSchema: false }).staticSource();
+
+    expect((files[0].data as GraphQLPageData).getGraphQLPageProps().payload).not.toHaveProperty(
+      'sdl',
+    );
+  });
+
+  test('generates links after attaching to a loader', async () => {
+    const source = await create().staticSource({
+      // route group folders are ignored in page URLs
+      baseDir: '(graphql)',
+      includeTypes: true,
+    });
+    source.configureStatic?.({
+      loader: {
+        getPages: () =>
+          source.files.flatMap((file) => {
+            if (file.type !== 'page') return [];
+            const slugs = file.path
+              .replace(/^\(graphql\)\//, '')
+              .replace(/\.mdx$/, '')
+              .split('/');
+            return [{ url: `/docs/${slugs.join('/')}`, data: file.data }];
+          }),
+      } as never,
+    });
+    const file = source.files.find((file) => file.path === '(graphql)/queries/orders.mdx');
+    const { links } = (file!.data as GraphQLPageData).getGraphQLPageProps().payload;
+
+    expect(links?.operations['query:orders']).toBe('/docs/queries/orders');
+    expect(links?.operations['mutation:createOrder']).toBe('/docs/mutations/createOrder');
+    expect(links?.types.Order).toBe('/docs/objects/Order');
+    expect(links?.types.OrderStatus).toBe('/docs/enums/OrderStatus');
+  });
+
+  test('per item with meta files', async () => {
+    const source = await create().staticSource({ meta: true });
+    const metaFiles = source.files.filter((file) => file.type === 'meta');
+
+    expect(metaFiles).toMatchSnapshot();
+  });
+
+  test('per file', async () => {
+    const source = await create().staticSource({ per: 'file' });
+
+    expect(source.files).toHaveLength(1);
+    const file = source.files[0];
+    expect(file.path).toBe('store.mdx');
+
+    const data = file.data as GraphQLPageData;
+    expect(data.toc.map((item) => item.title)).toMatchInlineSnapshot(`
+      [
+        "Customer",
+        "Orders",
+        "Search",
+        "Node",
+        "Create Order",
+        "Legacy Create Order",
+        "Order Updated",
+      ]
+    `);
+
+    const withTypes = await create().staticSource({
+      per: 'file',
+      includeTypes: (type) => type.name.startsWith('Order'),
+    });
+    expect((withTypes.files[0].data as GraphQLPageData).toc.slice(7)).toEqual([
+      { depth: 2, title: 'OrderStatus', url: '#orderstatus' },
+      { depth: 2, title: 'Order', url: '#order' },
+      { depth: 2, title: 'OrderFilter', url: '#orderfilter' },
+      { depth: 2, title: 'OrderCreateInput', url: '#ordercreateinput' },
+    ]);
+  });
+
+  test('custom pages builder', async () => {
+    const source = await create().staticSource({
+      per: 'custom',
+      toPages(builder) {
+        builder.create({
+          type: 'operation',
+          path: 'my-orders.mdx',
+          info: { title: 'My Orders' },
+          item: { kind: 'query', name: 'orders' },
+        });
+      },
+    });
+
+    expect(source.files).toHaveLength(1);
+    expect(source.files[0].path).toBe('my-orders.mdx');
+    expect(source.files[0].data.title).toBe('My Orders');
+  });
+
+  test('SDL text & GraphQLSchema instance inputs', async () => {
+    const sdl = `
+type Query {
+  hello: String!
+}
+`.trim();
+
+    const fromText = createGraphQL({ input: { api: sdl } });
+    expect((await fromText.getSchema('api')).sdl).toBe(sdl);
+
+    const fromInstance = createGraphQL({
+      input: { api: () => buildSchemaFromSDL(sdl) },
+    });
+    const loaded = await fromInstance.getSchema('api');
+    expect(loaded.sdl).toBe(printSchema(loaded.schema));
+  });
+
+  test('refuses schemas not listed in input', async () => {
+    const server = create();
+
+    await expect(server.getSchema('type Query { hello: String }')).rejects.toThrow(
+      'is not listed in "input"',
+    );
+    await expect(server.getSchema('constructor')).rejects.toThrow('is not listed in "input"');
+  });
+});
+
+describe('buildSchemaFromSDL', () => {
+  test('supports type extensions', () => {
+    const schema = buildSchemaFromSDL(
+      `
+type Query {
+  hello: String!
+}
+
+extend type Query {
+  world: String!
+}
+`.trim(),
+    );
+
+    const fields = schema.getQueryType()!.getFields();
+    expect(Object.keys(fields)).toEqual(['hello', 'world']);
+  });
+});

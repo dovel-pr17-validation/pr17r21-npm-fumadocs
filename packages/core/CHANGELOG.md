@@ -1,0 +1,3527 @@
+## fumadocs-core@16.17.8
+
+### `remarkInclude` in `fumadocs-core`
+
+`<include>` moved from Fumadocs MDX to `fumadocs-core/mdx-plugins/remark-include`, a unified plugin for any MDX or Markdown pipeline.
+
+- `fumadocs-mdx/config` still exports `remarkInclude`, forwarded from `fumadocs-core`.
+- `getProcessor` parses included files by their format, like a `.md` file included in an `.mdx` page.
+- Headings in an included section get IDs unique among the page's own headings.
+- Circular includes throw instead of hanging, and included code files no longer end with an empty line.
+- `fumadocs-mdx` requires `fumadocs-core` 16.17.8.
+
+### Processed Markdown links page-relative images at their served URLs
+
+- Images imported by Remark Image get the URLs bundlers serve them at in Remark LLMs, instead of their relative paths
+- Stringifiers output JS expressions with `s.expression()`, for Markdown only known at runtime
+- Search records of included content with images are no longer cut
+- The Sätteri preset only imports images in bundlers, at runtime it resolves their sizes like the MDX preset
+
+### Bring your own highlighter
+
+Shiki stays the default, and isn't loaded when you highlight code with another highlighter.
+
+- `fumadocs-core/highlight` exports a `Highlighter` interface, created with `createHighlights()` from `fumadocs-core/highlight/highlights` (`@pierre/highlights`) or `createShikiHighlighter()` from `fumadocs-core/highlight/shiki`, `override()` creates one with other options.
+- `rehypeCodeFromHighlighter` from `fumadocs-core/mdx-plugins/rehype-code.core` highlights code blocks with a highlighter, or a function creating one with the transformers of Fumadocs. `createRehypeCode` is deprecated, Sätteri has `rehypeCodeFromHighlighter` in `@fumadocs/satteri/rehype-code`. Pass `transformerTwoslash()` in its `transformers` option to analyze Twoslash blocks in batches.
+- `createServerCodeBlock()` and `createDynamicCodeBlock()` in Fumadocs UI create code blocks from a highlighter. Dynamic code blocks are highlighted on the server too.
+- `toJsx()` from `fumadocs-core/utils/hast-to-jsx` converts hast into React elements like `toJsxRuntime()` of `hast-util-to-jsx-runtime`, MDX nodes through an `evaluator`, over 10x faster on highlighted code, whose spans render as one HTML string. Every Fumadocs renderer uses it, `hast-util-to-jsx-runtime` is no longer a dependency.
+- Twoslash loads the languages of code blocks in popups before highlighting, an unknown language there no longer fails the code block.
+- OpenAPI Standalone highlights code blocks with Highlights, in its server-rendered pages too.
+- The page factories of OpenAPI, GraphQL and AsyncAPI, type tables, `createPython()`, `createPythonComponents()`, `localHtml()` and the shadcn `createSnippet()` take a `highlighter`.
+- Deprecated `shiki` and `shikiOptions` of the API pages and `shiki` of type tables, pass a `highlighter` instead.
+- Integrations require `fumadocs-core` 16.17.8, the API pages and shadcn also require `fumadocs-ui` 16.17.8.
+
+## fumadocs-core@16.17.7
+
+### Imports across Windows drives
+
+- `remarkImage` and generated `.source` files import files on another drive or a UNC path by their absolute path.
+- Generated imports of files in dot-folders are prefixed with `./`.
+
+Fix [#3723](https://github.com/fuma-nama/fumadocs/issues/3723)
+
+## fumadocs-core@16.17.6
+
+### i18n `parser: 'none'`
+
+- `parser: 'none'` no longer parses locales from file paths, files without a `locale` belong to the default language.
+
+### Generated pages in every language
+
+- Virtual files accept a `locale`, `$` for every language, instead of parsing it from their path.
+- Pages from `staticSource()` and `dynamicSource()` of OpenAPI, AsyncAPI and GraphQL are shared with every language of `loader()`.
+
+Fix [#3720](https://github.com/fuma-nama/fumadocs/issues/3720)
+
+## fumadocs-core@16.17.5
+
+### Faster API pages and search indexes
+
+- Schema UI generates the schemas it shows when they open, instead of every schema reachable from the root.
+- Inline schemas are identified by their position, links to their properties copied before this version no longer open them.
+- TypeScript definitions of bodies are generated when copied.
+- Search indexes take breadcrumbs from one walk of the page tree, instead of a search for each page.
+
+## fumadocs-core@16.17.2
+
+### Faster `loader()`
+
+- Page trees are built faster, especially with custom `sort` options.
+- Faster `loader()` setup and page lookups like `getPage()` and `getPageByUrl()`.
+- Fallback page trees of i18n sources keep the locale in URLs and IDs.
+- A page listed in `pages` is no longer duplicated when another folder takes it with a higher priority, like `pagesIndex`.
+
+## fumadocs-core@16.17.1
+
+### Format generated Markdown tables
+
+- Generated tables have aligned columns: the type tables of `auto-type-table`, the tables of `renderToMarkdown()` and the table rows of search records.
+- `markdownTable()` from `fumadocs-core/mdx-plugins/stringifier` creates a formatted table for your plugins.
+- `fumadocs-typescript` requires `fumadocs-core` 16.17.1.
+
+## fumadocs-core@16.17.0
+
+### Restore sync `index()` and `indexNode()` in `llms()`
+
+Since 16.15.9, `index()` and `indexNode()` of `llms()` returned a promise, so code using them as strings, like joining `indexNode()` results, printed `[object Promise]` without a type error. They return a string again when `llms()` receives a loader, and only return a promise when it receives a function like `getSource` of runtime content sources. Awaiting them keeps working in both cases.
+
+### Highlight search results with CSS
+
+Search results no longer wrap matches in `<mark>`, `content` is the indexed Markdown. The search dialog highlights matches with the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API), style them with `::highlight(fd-search)`. Custom search UIs can use `useHighlightQuery()` from `fumadocs-core/search/client`.
+
+- `createContentHighlighter()` is deprecated.
+- Removed `contentWithHighlights` from search results, and the `renderHighlights` prop of `<SearchDialogListItem />`.
+- `<SearchDialogListItem />` renders the Markdown of results with the `prose prose-sm` typography.
+
+### Search hooks for each provider
+
+`fumadocs-core/search/client` exports a hook for each search client, like `useFetchSearch()`. They return the props of `<SearchDialog />`:
+
+```tsx
+const search = useFetchSearch({ locale });
+
+<SearchDialog {...search} {...props}>
+  <SearchDialogList />
+</SearchDialog>;
+```
+
+`data` is the last successful search, its `items` have their content parsed into `hastContent`. `error` is set when the last search failed.
+
+- `experimental_useSearch()` creates a search hook from a memoized search function.
+- `useDocsSearch()` is deprecated.
+- `useFlexsearchStatic()` and `useOramaCloudLegacySearch()` are exported from the paths of their clients.
+- `<SearchDialogList />` shows `defaultItems` without results.
+- `useSearchList()` is removed, `useSearch()` returns `getActive()`, `setActive()` and `subscribeActive()` for the active item.
+- `<SearchDialogListItem />` renders a `div` instead of a `button`, table rows render their cells only.
+- `renderMarkdown` of `<SearchDialogListItem />` renders `content` instead of `hastContent`. Without it, the string content of custom items is shown as text.
+- The templates of Fumadocs CLI and Create Fumadocs App use the new hooks.
+
+### Index tables by row
+
+Structured data records each table row as a Markdown table of its header row and itself, instead of a record per cell. Type tables from `auto-type-table` record a row for each prop instead of the `TypeTable` element. Re-sync your search indexes to pick them up.
+
+- `remarkStructure()` defaults `types` to `table` instead of `tableCell`.
+- `tableRowToStructuredData()` from `fumadocs-core/search` creates the structured data of a table row, `typeTableToStructuredData()` from `fumadocs-typescript` of a type table.
+- Search hooks group the rows of a table into a `table` item, `<SearchDialogList />` renders it with `Table`, `<SearchDialogListTable />` by default.
+- Algolia and Orama Cloud link to the anchor of every record, like the props of type tables.
+- Orama Cloud searches `title`, `section` and `content` by default, set `params.properties` to search other fields.
+- `remarkStructure()` of Sätteri records the `data.structuredData` of nodes in place of the nodes.
+
+### Markdown and search records from the authored source
+
+`remarkLLMs()` and `remarkStructure()` of `fumadocs-core` slice their Markdown from the authored source like Sätteri, instead of stringifying the syntax tree. It is much faster, Markdown is no longer escaped or reformatted, and local images keep their addresses. Re-sync your search indexes to pick up the new records.
+
+- Plugins record the Markdown of content they replace with `replaceSource()` or `embedSource()` from `fumadocs-core/mdx-plugins/stringifier`, in place of `data._stringify`, and add search records with `data.structuredData`. Nodes they insert otherwise are left out. A `namespace` limits an edit to the stringifiers of that namespace, like `search` for search records.
+- Search records are always Markdown, also in Sätteri. `filterElement` replaces `stringify.filterElement`, it chooses the JSX elements kept as HTML tags (`File`, `TypeTable`, `Callout` and `Card` by default) that search dialogs render as components. Other elements and links are replaced by their content, images are removed, and an element on one line is recorded like a paragraph.
+- Removed `defaultStringifier()` (use `createStringifier()`), `StringifyOptions`, `allowedMdxAttributes`, `filterMdxAttributes`, `placeholder()` (use `mdxAsPlaceholder`), and the `stringify` and `mdast-util-to-markdown` options of both plugins.
+- Included content goes through the plugins like the document's own, Sätteri includes `.md` files as Markdown.
+- `<auto-files>` shows its files in a code block, `auto-type-table` its props in a Markdown table, created by `typeTableToMarkdown()` from `fumadocs-typescript`.
+- `remarkShow()` and `fileGenerator()` of `fumadocs-docgen` record their Markdown, generators receive the `file` to do the same.
+- Records of `fumadocs-obsidian` resolve wikilinks, and leave comments, block IDs, callout markers and embeds out. Comments are removed before parsing, so they no longer split a paragraph.
+- Pages of `fumadocs-python` compile from their MDX, so they have Markdown and search records.
+- `fumadocs-mdx`, `fumadocs-docgen` and `fumadocs-obsidian` require `fumadocs-core` 16.17.0.
+
+Fix [#3662](https://github.com/fuma-nama/fumadocs/issues/3662)
+
+### Fix Markdown output and search records
+
+- `remarkImage()` with `onError: 'hide'` removes the right images when a paragraph has several, and Sätteri removes them from the Markdown too.
+- `files` code blocks of `remarkMdxFiles()` nest the entries under the last item of a folder (after `└──`), and trees indented with spaces only.
+- The remark and rehype plugins no longer slow down quadratically on large documents, like `rehypeToc()` taking 17 ms instead of 239 ms on a 5 MB page.
+- `fumadocs-epub` removes every unresolved image, the second of two adjacent ones was kept.
+- Sätteri: headings with expression props, like `<Badge value={1} />` or local images, compile again, without these elements in their `toc` entry.
+- Sätteri: `remarkStructure()` records every node type listed in `types`, like `fumadocs-core`. A blockquote is one search record instead of two. In the Markdown, includes and type tables stay inside their list item or blockquote, heading IDs no longer break setext and closed ATX headings, and nested replacements no longer duplicate the source after them.
+
+### Sync Mixedbread stores with `sync()`
+
+- `sync()` and `toDocuments()` from `fumadocs-core/search/mixedbread` upload a file for each page, whose chunks are its title, headings and paragraphs. Results link to their headings and render tables like other search integrations.
+- Stores synced with `mxbai store sync` need a re-sync, the frontmatter of pages is no longer read.
+- Tag filters match the tags of pages, `locale` filters results by language, and the `limit` of requests can only lower `topK`.
+- The Mixedbread template of Fumadocs CLI syncs a pre-rendered `static.json` with `sync()`, debounces searches by 300 ms, and reads the API key from `MXBAI_API_KEY`.
+
+### Ignore unsupported locale cookies
+
+With `hideLocale: 'always'`, `createI18nMiddleware()` ignores locale cookies that aren't in `languages`.
+
+### Limit results of the advanced search server
+
+- Without a `limit` in the request, it returns up to 60 results instead of every matched record.
+- The `limit` in its `search` option applies to requests without one.
+
+## fumadocs-core@16.15.18
+
+### Meilisearch integration
+
+Search your docs with [Meilisearch](https://www.meilisearch.com), self-hosted or on Meilisearch Cloud.
+
+- `toDocuments()` and `sync()` from `fumadocs-core/search/meilisearch` export your pages and replace the documents of an index, old documents stay searchable until the new ones are indexed.
+- `meilisearchClient()` from `fumadocs-core/search/client/meilisearch` searches from the browser with `useDocsSearch()`, filtered by tag and locale.
+
+```tsx
+const client = new Meilisearch({ host, apiKey: searchKey });
+
+useDocsSearch({
+  client: meilisearchClient({ client, indexName: 'docs', locale }),
+});
+```
+
+Set it up with `npx @fumadocs/cli feature search --provider meilisearch`, or choose it in `create-fumadocs-app`.
+
+Fix [#3627](https://github.com/fuma-nama/fumadocs/issues/3627)
+
+## fumadocs-core@16.15.16
+
+### Get pages by decoded slugs
+
+`getPage()` accepts both URI encoded and decoded slugs. React Router and TanStack Router pass decoded params, so pages with spaces or non-ASCII characters in their slugs were not found.
+
+Fix [#3613](https://github.com/fuma-nama/fumadocs/issues/3613)
+
+## fumadocs-core@16.15.15
+
+### Fix infinite recursion in the MDX stringifier with `mdast-util-to-markdown@2.1.3`
+
+The stringifier wraps every `toMarkdown` handler but dropped their `attention` and `peek` properties, which `mdast-util-to-markdown@2.1.3` relies on to serialize bold and italic text. Pages containing them overflowed the stack during build.
+
+## fumadocs-core@16.15.13
+
+### Keep TOC step numbers after an HTML re-parse
+
+`remarkSteps` marks each step heading with a numeric `data-fd-step`, and the TOC plugin only read it as a number.
+A later `rehype-raw` pass re-parses the tree from HTML, so the property came back as the canonical `dataFdStep` string and every step number silently vanished from the table of contents.
+
+`rehypeToc` now accepts both shapes, so pipelines that render raw HTML in Markdown keep their numbered TOC.
+
+### Subscribe with `useSyncExternalStore`
+
+#### Optimize Performance
+
+Use `useSyncExternalStore()` from React.
+
+## fumadocs-core@16.15.12
+
+### Fix `filterElement` being ignored by `remarkLLMs`
+
+`remarkLLMs` wrote its own `filterElement` over yours, so the option did nothing:
+
+```ts
+remarkLLMs({
+  // never ran
+  filterElement: (node) => node.name !== 'Callout',
+});
+```
+
+Your function now runs for every node except `mdxjsEsm`, which stays excluded either way.
+
+Fumadocs MDX passes this option through `postprocess.includeProcessedMarkdown`.
+
+## fumadocs-core@16.15.10
+
+### Fix same-page anchors on Tanstack Start
+
+Tanstack Router's `Link` takes a pathname in `to` and reads the hash from a separate `hash` prop, so a same-page anchor like `[link](#installation)` was rendered as a link to the current page with the hash dropped, clicking it did nothing. The Tanstack adapter now renders a native `<a>` for those hrefs:
+
+```mdx
+Jump to [Installation](#installation).
+```
+
+## fumadocs-core@16.15.9
+
+### `getPageByUrl()` on the loader
+
+Look up a page by its URL:
+
+```ts
+source.getPageByUrl('/docs/getting-started');
+source.getPageByUrl('/cn/docs/getting-started', 'cn');
+```
+
+Without the `language` argument every language is looked up, unlike `getPageByHref()` which resolves the default language only.
+
+### `llms()` renders pages
+
+`llms()` used to build the `llms.txt` index only, turning a page into Markdown was left to your own `getLLMText()`. Pass `renderPage` and it covers both:
+
+```ts
+import { llms } from 'fumadocs-core/source';
+
+export const docsLlms = llms(source, {
+  renderPage: async (page) => `# ${page.data.title} (${page.url})
+
+${await page.data.getText('processed')}`,
+});
+```
+
+- `page(page)` renders one page, for the per-page Markdown route.
+- `full(lang?)` renders every page and joins them, for `llms-full.txt`.
+
+```ts
+// app/llms-full.txt/route.ts
+export const GET = async () => new Response(await docsLlms.full());
+```
+
+Both methods exist only when `renderPage` is given, in types and at runtime. Fumadocs cannot know how your content source exposes Markdown: `page.data.getText('processed')` on Fumadocs MDX, `page.data.content` on `@fumadocs/local-md`.
+
+### `fumadocs-core/mcp`: docs tools for your MCP server
+
+Register the docs tools on a server you own, rather than on a handler Fumadocs builds for you:
+
+```ts
+import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
+import { registerSearchTool, registerSourceTools } from 'fumadocs-core/mcp';
+import { createFromSource } from 'fumadocs-core/search/server';
+import { docsLlms, source } from '@/lib/source';
+
+const handler = createMcpHandler(() => {
+  const mcp = new McpServer({ name: 'docs', version: '1.0.0' });
+
+  registerSourceTools(mcp, source, docsLlms);
+  registerSearchTool(mcp, createFromSource(source));
+
+  return mcp;
+});
+
+export const GET = (req: Request) => handler.fetch(req);
+export const POST = (req: Request) => handler.fetch(req);
+export const DELETE = (req: Request) => handler.fetch(req);
+```
+
+| Function                                 | Tools                    |
+| ---------------------------------------- | ------------------------ |
+| `registerSourceTools(mcp, source, llms)` | `list_pages`, `get_page` |
+| `registerSearchTool(mcp, server)`        | `search`                 |
+
+Each takes the integration it reads from, so you can add your own tools next to them, point the search tool at another server, or register only one of the two.
+
+`@modelcontextprotocol/server` is an optional peer dependency, and `registerSourceTools` needs a `llms()` output with `renderPage`.
+
+### `toDocuments()` for Algolia and Orama Cloud
+
+Build the search indexes of every page, instead of mapping pages by hand:
+
+```ts
+// app/static.json/route.ts
+import { toDocuments } from 'fumadocs-core/search/algolia';
+import { source } from '@/lib/source';
+
+export const GET = async () => Response.json(await toDocuments(source));
+```
+
+It awaits `structuredData` when your collection is async (React Router and TanStack Start), a step that was easy to miss. Pass `tag` to filter results by a value of your choice:
+
+```ts
+toDocuments(source, { tag: (page) => page.slugs[0] });
+```
+
+Exported from `fumadocs-core/search/algolia` and `fumadocs-core/search/orama-cloud`.
+
+### Marked as side-effect free
+
+`fumadocs-core` now declares `"sideEffects": false`. No module in the package imports for side effects or ships CSS, so bundlers that rely on the hint (webpack in particular) can drop unused modules instead of keeping them alive:
+
+```ts
+import { createGetUrl } from 'fumadocs-core/source';
+```
+
+## fumadocs-core@16.15.7
+
+### Async `_fd_prepare` hook for Shiki transformers
+
+`rehype-code` awaits `transformer._fd_prepare(code, options)` on every transformer before highlighting a code block. Transformers can run async work (or coalesce work across the code blocks being highlighted concurrently) and serve it from the synchronous Shiki hooks afterwards.
+
+## fumadocs-core@16.15.5
+
+### Root types: version your docs with `root: "<type>"`
+
+`root` in `meta.json` now accepts a string, the type of root folder. Root folders of the same type under the same parent are interchangeable, which is how you keep multiple versions of the same docs in one site:
+
+```json tab="content/docs/v1/meta.json"
+{
+  "title": "1.0.0",
+  "root": "version"
+}
+```
+
+```json tab="content/docs/v2/meta.json"
+{
+  "title": "2.0.0",
+  "root": "version"
+}
+```
+
+The sidebar only shows the opened version, and docs layouts render a dropdown to switch between them. Switching keeps your place: it navigates to the same page in the other version (`/docs/v1/guide` to `/docs/v2/guide`), or its index page when the page doesn't exist there.
+
+`root: true` is simply the default type, displayed as tabs. See [Versioning](https://fumadocs.dev/docs/versioning) for the guide and [Root Type](https://fumadocs.dev/docs/page-conventions#root-type) for the reference.
+
+### Tabs are grouped by root folder
+
+Layout tabs are now grouped by the root folders on the current page's path, with one dropdown per group. This changes a few behaviours of the existing `root: true` tabs:
+
+- Clicking a tab navigates to the same page in the target folder when it exists, otherwise its index page as before.
+- With nested root folders, each level gets its own dropdown instead of one flat list. Tab lists (`tabMode: 'top'` on Docs layout, `tabMode: 'navbar'` on Notebook layout) show the innermost `root: true` group, and are hidden on pages outside of any root folder.
+- `getLayoutTabs()` includes typed root folders too, so a custom `transform` also decorates them. Custom `tabs` entries bound to a page tree folder are grouped the same way, other entries are appended to the `root: true` dropdown.
+- `tabs={false}` disables the dropdowns of typed root folders as well.
+
+### `findProjection()` in `fumadocs-core/page-tree`
+
+Find the structural projection of a page in another root folder, the page at the same file path relative to the root folder:
+
+```ts
+import { findProjection } from 'fumadocs-core/page-tree';
+
+findProjection(v1, v2, page)?.url;
+```
+
+## fumadocs-core@16.15.3
+
+### Fix duplicated search result for pages whose description repeats in the content
+
+Pages generated by Fumadocs OpenAPI emit the operation description as both the page description and a content section, so every endpoint page listed the same line twice in the search dialog. Search indexing now skips the page description when an identical content record exists, keeping the record with the heading anchor.
+
+Fix [#3509](https://github.com/fuma-nama/fumadocs/issues/3509)
+
+### Remark LLMs: export a component with `output: "function"`
+
+With `output: "function"`, `_markdown` becomes a component instead of a string: Markdown content is still stringified at compile time, while JSX elements stay as JSX, receiving their original props.
+
+```ts
+// fumadocs-mdx collection config
+postprocess: {
+  includeProcessedMarkdown: { output: 'function' },
+},
+```
+
+Render it with `renderToMarkdown` from `fumadocs-core/server`. Elements resolve from `props.components`: a component can call `asMarkdown()` to output its own Markdown form, other components (including missing ones) are serialized as JSX syntax.
+
+```tsx
+import { renderToMarkdown } from 'fumadocs-core/server';
+
+const { _markdown: Content } = await page.data.load();
+const text = await renderToMarkdown(<Content components={getMDXComponents()} />);
+```
+
+`getText('processed')` keeps working: it renders the component for you, with an optional components map:
+
+```ts
+const text = await page.data.getText('processed', { components: getMDXComponents() });
+```
+
+Supported in bundler collections with both compilers, and in `dynamic: true` collections & `@fumadocs/satteri/local-md` with the Sätteri compiler.
+
+### `fumadocs-core/server`: render React trees into Markdown
+
+The Markdown renderer of Fumapress is now part of Fumadocs core. `renderToMarkdown()` converts RSC output into Markdown, and calling `asMarkdown()` is how a server component opts in with its own Markdown form:
+
+```tsx
+import { asMarkdown, md, renderToMarkdown } from 'fumadocs-core/server';
+
+async function Callout({ title, children }) {
+  if (asMarkdown()) return md.linePrefix('> ')`**${title}**\n${children}`;
+
+  return <div className="callout">...</div>;
+}
+
+const text = await renderToMarkdown(
+  <Callout title="Note">
+    <p>Hello</p>
+  </Callout>,
+);
+// > **Note**
+// >
+// > Hello
+```
+
+Components that never call `asMarkdown()` are kept as JSX syntax with their serializable props, so are client components, which never run on the server. Host elements returned by an opted-in component are converted with a built-in HTML to Markdown table.
+
+`renderRoute()` renders a page element only when its component opts in, for giving arbitrary routes a Markdown version. In the browser the module resolves to a stub where `asMarkdown()` is always `false`.
+
+## fumadocs-core@16.15.1
+
+### Forward dynamic loader from `fumadocs-core/source`
+
+
+
+### Read structured data from `page.data.structuredData()`
+
+Search indexing no longer falls back to `(await page.data.load()).structuredData`. Runtime content sources expose `structuredData()` on page data instead, sharing the compile with `load()`:
+
+```ts
+const structuredData = await page.data.structuredData();
+```
+
+The renderer returned by `load()` still carries `structuredData`, existing code keeps working.
+
+## fumadocs-core@16.15.0
+
+### Redesign source API
+
+Content sources can hook into the static loader they are attached to, and dynamic sources can opt out of the loader's in-memory file cache.
+
+`configureStatic` runs when a source is attached to `loader()`, and again whenever `dynamicLoader()` builds a new static loader:
+
+```ts
+export function createMySource(): DynamicSource {
+  return {
+    cache: 'custom',
+    async files() {
+      return loadFiles();
+    },
+    configureStatic({ loader, source }) {
+      // `loader` is the created static loader
+      // `source` is the record key when using named sources
+    },
+    configure(loader, { source }) {
+      loader.invalidate();
+    },
+  };
+}
+```
+
+- `cache: 'memory'` (default): `files()` is called once until `invalidate()`.
+- `cache: 'custom'`: the source caches itself. `dynamicLoader()` re-runs `files()` on `get()` and rebuilds only when the file list is shallowly different (by identity).
+
+### Integrations
+
+GraphQL cross-links are generated from the attached loader instead of a `baseUrl` option on `staticSource()`. Local, OpenAPI, and AsyncAPI `dynamicSource()` use `cache: 'custom'` and reuse generated files by identity until `invalidate()`.
+
+Sanity now uses `cache: 'custom'` when given a `sanityFetch` from `next-sanity/live`, calling `invalidate()` in draft mode is no longer needed.
+
+### Return heading and text results from the Algolia client
+
+`algoliaClient` grouped hits into page, heading and text results, then dropped everything except pages. All three are now returned with highlighting, matching the other search clients.
+
+### Fix locale-only pages leaking into other locales
+
+i18n storages no longer share folder arrays with the fallback locale. Locale-only pages previously appeared in every locale's page tree as duplicate nodes.
+
+### Index pages by URL
+
+`getPageByHref` resolves absolute URLs through an index instead of scanning all pages on every call.
+
+### Do not cache rejected promises
+
+The dynamic loader's `files()`, Notion's page `load()`, `createFromSource`'s index build, and Shiki factory init retry on the next call after a transient failure, instead of returning the same rejection forever.
+
+### Highlight only the search results within `limit`
+
+`limit` bounds the returned hits, so search now stops at that many results instead of highlighting every matched page and slicing afterwards.
+
+## fumadocs-core@16.14.5
+
+### Loader: `next` parameter for custom `slugs` function
+
+The `slugs` option now receives a `next` function as its second argument, which generates the default slugs from the file path. This lets custom slug functions build on the default generation instead of reimplementing it:
+
+```ts
+loader({
+  slugs(file, next) {
+    if (file.path.startsWith('blog/')) return ['blog', ...next()];
+    // return `undefined` to generate default slugs
+  },
+});
+```
+
+**Behavior change:** conflicting cases like `dir/index.mdx` vs `dir.mdx` are now resolved for custom slugs functions as well. Index files are always processed after other pages, and receive an `index` suffix when their slugs (custom or default) collide with an existing page — previously, custom slugs functions that produced such collisions threw a `Duplicated slugs` error.
+
+## fumadocs-core@16.14.4
+
+### Introduce `@fumari/image-size`, replacing `image-size` in `remarkImage`
+
+A fork of [probe-image-size](https://github.com/nodeca/probe-image-size) with no dependencies of its own.
+
+```ts
+import { probe, imageSize } from '@fumari/image-size';
+
+await probe('./public/banner.png'); // { width: 1200, height: 630, type: 'png', mime: 'image/png' }
+await probe('https://example.com/banner.png', { timeout: 5000 });
+
+imageSize(bytes); // the same result, or `null`
+```
+
+`remarkImage` now uses it in both `fumadocs-core` and `@fumadocs/satteri`. Remote images are no longer downloaded in full just to be measured, and redirects are followed. Sizes are always in pixels, so an SVG sized in `em` or `pt` is converted instead of being skipped. Remote requests also time out after 30 seconds by default.
+
+One behaviour difference worth knowing: the supported formats are avif/heic/heif, bmp, gif, ico, jpeg, png, psd, svg, tiff and webp. Sizes for jxl, tga, pnm, dds, icns, cur, ktx and jp2 can no longer be resolved and go through `onError` instead.
+
+Sequential scanning stops after 512 KB, but that never loses an image: the one format that stores its dimensions past that point — TIFF with a trailing IFD — is resolved by following the header's pointer with a targeted read, using an HTTP `Range` request for remote files (and skipping through the body when the server ignores ranges).
+
+## fumadocs-core@16.14.1
+
+### Fix unusable `tokenizer` search option
+
+The search engine rejects a `language` alongside a custom `tokenizer`, since the tokenizer carries its own. Both search entry points supplied one unconditionally — `createDB`/`createDBSimple` through a destructuring default that `language: undefined` could not suppress, and `createI18nSearchAPI` by hardcoding `multilingual` after the spread — so passing `tokenizer` always threw `NO_LANGUAGE_WITH_CUSTOM_TOKENIZER` at index-build time. On i18n sources there was no call that worked at all.
+
+`language` is now omitted when a tokenizer is present (from either `tokenizer` or `components.tokenizer`), and i18n servers no longer overwrite a caller-supplied `language`. Attaching a stemmer to the default multilingual segmentation works as documented:
+
+```ts
+import { stemmer } from '@zbsearch/stemmers/english';
+
+createFromSource(source, {
+  tokenizer: { language: 'multilingual', stemming: true, stemmer },
+});
+```
+
+## fumadocs-core@16.14.0
+
+### Replace Orama with ZBSearch, zero-config i18n search
+
+The built-in search engine moved from `@orama/orama` to [ZBSearch](https://www.zbsearch.dev), a near drop-in successor. All module paths and APIs are unchanged, and search now works with **every language out of the box**: the new default `multilingual` mode uses Unicode word segmentation, so i18n search needs zero config.
+
+```ts
+import { createFromSource } from 'fumadocs-core/search/server';
+
+// no `localeMap`, no `@orama/tokenizers`, CJK included
+export const { GET } = createFromSource(source);
+```
+
+All locales now share a single search database — results are filtered by the locale of your pages at query time. Same for static mode:
+
+```ts
+import { staticClient } from 'fumadocs-core/search/client/orama-static';
+
+const client = staticClient({ locale });
+```
+
+### Renames
+
+- `oramaStaticClient` → `staticClient` (old name kept as deprecated alias)
+- `initOrama` → `initDB`, it now creates a ZBSearch instance and is optional — the exported data restores the tokenizer on load
+
+### Deprecated
+
+- `localeMap` is no longer needed. It still works for language-specific stemming/stop-words and keeps the legacy per-locale databases when specified.
+
+### Notes for advanced usage
+
+- `language`, `components`, `plugins` and `search` options are now typed against ZBSearch instead of `@orama/orama` — custom tokenizers or plugins written for Orama must be swapped to their ZBSearch equivalents.
+- The exported static search data is now a ZBSearch database (i18n exports became a single unified database), so server and client should be on the same fumadocs-core version.
+- `@orama/orama` and `@orama/tokenizers` can be removed from your dependencies unless you use them directly. Orama **Cloud** integrations (`fumadocs-core/search/orama-cloud`) are unaffected.
+
+## fumadocs-core@16.13.0
+
+### Respect quality values in `isMarkdownPreferred`
+
+`isMarkdownPreferred()` previously returned `true` whenever a Markdown media type appeared anywhere
+in `Accept`, ignoring how the client ranked it. A request for `Accept: text/html;q=0.9, text/markdown;q=0.1`
+was served Markdown even though it clearly preferred HTML.
+
+It now compares the client's highest quality value for a Markdown type against its highest value for
+HTML, and only prefers Markdown when Markdown ranks at least as high. Wildcards (`*/*`, `text/*`)
+count towards HTML, so `Accept: */*` keeps receiving HTML.
+
+A tie still prefers Markdown, so agents sending `Accept: text/html,text/markdown,text/plain,*/*;q=0.5`
+are unaffected.
+
+The negotiation examples and templates now also set `Vary: Accept` on the negotiated Markdown
+response, so shared caches key on the header the representation was selected by.
+
+## fumadocs-core@16.12.1
+
+### Obsidian content source v1
+
+Render Obsidian vaults directly through static or dynamic Fumadocs sources, with lazy in-memory compilation and local content hot reload. Remove the old generated-file and remark-plugin integrations.
+
+Resolve URL-encoded relative file links against their decoded source paths.
+
+## fumadocs-core@16.12.0
+
+### Introduce Glass Layout
+
+A new layout for docs, a smooth, beautiful variant built around floating, translucent panels.
+
+## fumadocs-core@16.11.4
+
+### Migrate from `js-yaml` to `yaml`
+
+## fumadocs-core@16.11.2
+
+### Add Astro framework support
+
+Add Astro as a supported framework with React islands, including framework providers, an example app, create-app template support, search integration, OG image generation, and documentation.
+
+## fumadocs-core@16.11.0
+
+### Default to Base UI
+
+Internal packages & templates now use Base UI rather than Radix UI.
+
+### Support `noCopy` attribute for codeblocks
+
+Use `noCopy` to remove copy button from codeblocks.
+
+## fumadocs-core@16.10.6
+
+### Migrate to `cnfast`
+
+Drop `tailwind-merge`.
+
+### Handle Vite `BASE_URL` for default values
+
+The default search URL endpoint will auto include the base path.
+
+## fumadocs-core@16.10.4
+
+### React Router v8 support
+
+The peer dependencies now include v8, note that previous versions can also work with v8 seamlessly, this is only updating the peer dependency range.
+
+# fumadocs-core
+
+## 16.10.3
+
+## 16.10.2
+
+### Patch Changes
+
+- 7e9548b: Fix infinite re-render where (1) a React transition is triggered, (2) the search dialog is inside `<Suspense />`. This causes the `loading` state to be `false` even after `setLoading(true)`, as transition will freeze state updates, and break the render-time state checks of `useDocsSearch()`.
+- 0997dd6: Deprecate `type: "xxx"` usage of `useDocsSearch()`, pass the `client` object instead. The allows a smaller bundle size with improved performance.
+- 71d58b8: Add `$infer` to content loader instance for easier type inference.
+
+## 16.10.1
+
+## 16.10.0
+
+### Patch Changes
+
+- 9b9545f: Add package issue tracker metadata.
+
+## 16.9.3
+
+### Patch Changes
+
+- 42f0255: Support `invalidate` & `revalidate` on dynamic loader
+- a807798: Improve source API utils & types
+
+## 16.9.2
+
+### Patch Changes
+
+- 5d579bd: improve loader API types
+- 5836093: Expose icon transformer
+
+## 16.9.1
+
+### Patch Changes
+
+- e77b9b3: Introduce `pagesIndex` property to explicitly define the index page for folder
+- 334c8fd: [i18n] support different orders of `preset()` calls
+
+## 16.9.0
+
+### Minor Changes
+
+- 214d5b0: Introduce new translations API
+
+### Patch Changes
+
+- 818ed21: support `sort` option in page tree builder
+- 3b66725: Support `sort.by` in loader page tree option
+
+## 16.8.12
+
+### Patch Changes
+
+- 768b676: Standardize `structuredData` in page data
+
+## 16.8.11
+
+### Patch Changes
+
+- 1dc86c7: loosen the range for waku
+
+## 16.8.10
+
+### Patch Changes
+
+- 062beab: fix internal types
+- 505cfe0: Add `remark-block-id` plugin
+
+## 16.8.9
+
+### Patch Changes
+
+- 2ca3eab: Support `tab-group` in codeblock tabs
+
+## 16.8.8
+
+## 16.8.7
+
+## 16.8.6
+
+## 16.8.5
+
+### Patch Changes
+
+- 79d3209: Narrow schema type for private OpenAPI properties
+
+## 16.8.4
+
+### Patch Changes
+
+- 61b15e9: fix Shiki languages not loaded under lazy mode
+- 1a5433c: Support `$` in locale for page tree generation
+
+## 16.8.3
+
+## 16.8.2
+
+## 16.8.1
+
+## 16.8.0
+
+### Minor Changes
+
+- 68c2b49: Support multi-source natively in `loader()` API
+- 92a1204: Introduce `dynamicLoader()` API, `loader()` with revalidation supported out-of-the-box
+
+### Patch Changes
+
+- b60fa32: Support function for loader option in Search API
+- a744f9f: Support frontmatter parsing at core-level
+
+## 16.7.16
+
+### Patch Changes
+
+- 9cf33e9: Improve inline code output
+- 9cf33e9: Support async hooks in Shiki transformers
+
+## 16.7.15
+
+### Patch Changes
+
+- e1567e2: use local fork of Shiki rehype integration
+- 9a200c8: fix multi-line in remark-npm
+- c731a92: Implement selective re-render for TOC
+- a4189ce: Improve AST plugins
+
+## 16.7.14
+
+### Patch Changes
+
+- 2d8f596: fix `npm pack` skipping nested `node_modules`
+
+## 16.7.13
+
+### Patch Changes
+
+- 690ddb9: bundle more deps
+
+## 16.7.12
+
+## 16.7.11
+
+### Patch Changes
+
+- 5524927: extend page tree root scope
+- d47c4f1: LLMs: support generating section for a specific page tree node
+
+## 16.7.10
+
+## 16.7.9
+
+### Patch Changes
+
+- f580ef6: Fix deserialized page tree item name styles
+
+## 16.7.8
+
+## 16.7.7
+
+### Patch Changes
+
+- 0a6507b: Improve `remarkSteps()` integration & support tag usage
+
+## 16.7.6
+
+## 16.7.5
+
+### Patch Changes
+
+- 55479b3: Improve TOC detection logic
+
+## 16.7.4
+
+## 16.7.3
+
+## 16.7.2
+
+## 16.7.1
+
+## 16.7.0
+
+### Minor Changes
+
+- f45d703: stabilize Shiki factory API
+
+### Patch Changes
+
+- 45aa454: Support `placeholder()` API in llms.txt generation
+
+## 16.6.17
+
+### Patch Changes
+
+- c2678c0: Improve `llms.txt` generation via `remark-llms` plugin
+- 417f07a: Expose Markdown stringifier
+- bb07706: Include root items only once in Breadcrumb.
+
+  Previously, when `includeRoot` was set to `true`, the root item was added twice to breadcrumbs.
+
+- f065406: Support fuma-content integration
+
+## 16.6.16
+
+### Patch Changes
+
+- 054da73: Implement `limit` option on search servers
+
+## 16.6.15
+
+## 16.6.14
+
+### Patch Changes
+
+- 8382363: [Remark Image] set `placeholder` to `none` by default
+
+## 16.6.13
+
+## 16.6.12
+
+### Patch Changes
+
+- ddb0f81: require explicit import for new search clients
+
+## 16.6.11
+
+### Patch Changes
+
+- d35f30c: deprecate `highlight` on content highlighter
+- ae3e742: Support flexsearch server & client
+- 269dfb3: Redesign search client adapter interface
+
+## 16.6.10
+
+### Patch Changes
+
+- 9b5c2dd: Support `llms` API in Loader API
+
+## 16.6.9
+
+### Patch Changes
+
+- 4d05c4e: [Search API] Generate breadcrumbs for custom `buildIndex` option.
+- 5f687b6: [rehype-toc] Support `data` export mode
+
+## 16.6.8
+
+### Patch Changes
+
+- 5453502: use Shiki.js v4
+
+## 16.6.7
+
+## 16.6.6
+
+## 16.6.5
+
+### Patch Changes
+
+- 1a614de: enforce MDX stringifier by default
+- 6ab6692: fix edge case for Dynamic Link
+
+## 16.6.4
+
+## 16.6.3
+
+## 16.6.2
+
+## 16.6.1
+
+### Patch Changes
+
+- 00c9a0f: Remove default rerank value from mixedbread search
+
+## 16.6.0
+
+### Minor Changes
+
+- 9241992: **Support Markdown in search results**
+
+  This deprecates the old `contentWithHighlights` field in search results, the highlights are marked with Markdown instead (e.g. `Hello <mark>World</mark>`).
+
+### Patch Changes
+
+- 64a0057: [Remark Feedback] skip MDX elements by default to avoid interfering with component logic
+
+## 16.5.4
+
+### Patch Changes
+
+- 1ad8a38: Support server-side Mixedbread search API, deprecate client-side adapter
+- 3e8efb0: [remark-structure] hotfix filter MDX elements
+
+## 16.5.3
+
+### Patch Changes
+
+- be957f1: use `mdast-util-to-markdown` for accurate stringification
+
+## 16.5.2
+
+### Patch Changes
+
+- c22f6ee: bump tsdown
+
+## 16.5.1
+
+## 16.5.0
+
+### Minor Changes
+
+- 9ba1250: Support Universal Shiki configuration
+
+## 16.4.11
+
+### Patch Changes
+
+- a75a84d: fix duplicated transformer execution for fallback trees
+
+## 16.4.10
+
+### Patch Changes
+
+- 099fde7: [Page Tree] Extract index page from folder
+- 6fd7e63: handle circular reference in page tree
+
+## 16.4.9
+
+### Patch Changes
+
+- 48dd0c2: fix incorrect page tree output
+
+## 16.4.8
+
+### Patch Changes
+
+- 0025484: [Page Tree Builder] define the priority to resolve node owner
+
+## 16.4.7
+
+### Patch Changes
+
+- 5dec9d0: `useFumadocsLoader()` support other names of the serialized page tree
+
+## 16.4.6
+
+### Patch Changes
+
+- ea57dbf: Introduce `remark-feedback-block` plugin
+
+## 16.4.5
+
+## 16.4.4
+
+### Patch Changes
+
+- cdc97e0: Improve experience with Shiki Twoslash
+
+## 16.4.3
+
+### Patch Changes
+
+- f5dcb7c: fix `update()` source function types
+- 7e08b2f: Add `orama-cloud-legacy` search integration for old Orama Cloud users
+
+## 16.4.2
+
+### Patch Changes
+
+- 590d36a: Support `findSiblings()` page tree utility
+- 98d38ff: Support context-aware type-safe `slugs` function in `loader()`
+- 446631d: Support `<auto-files />` syntax in `remark-mdx-files` plugin
+- b16a32f: Switch to tsdown for bundling
+
+## 16.4.1
+
+## 16.4.0
+
+### Minor Changes
+
+- a3b7919: Update mixedbread integration API and docs
+
+## 16.3.2
+
+## 16.3.1
+
+## 16.3.0
+
+### Minor Changes
+
+- a69b060: Support both Base UI and Radix UI as base component libraries
+
+## 16.2.5
+
+### Patch Changes
+
+- 7292424: Support MDX preset in Fumadocs Core
+
+## 16.2.4
+
+### Patch Changes
+
+- da87713: Fix recursive checking on unknown types
+- d17499b: Fix `basePath` being ignored
+
+## 16.2.3
+
+### Patch Changes
+
+- ef8eb6c: Expose Zod schema for page & meta data
+- e0c4c3a: [Remark Image] Respect `title` in images
+- 4e2bca7: support `collapsible` in meta data
+
+## 16.2.2
+
+### Patch Changes
+
+- 464442b: Support client-side loader, including serialization layer
+- 6c668e1: Support absolute URLs in search fetch client
+
+## 16.2.1
+
+## 16.2.0
+
+## 16.1.0
+
+### Minor Changes
+
+- 15bd183: **[Loader API] Default the type of `plugins` to `LoaderPluginOption[]`**
+
+  It should no longer enforce type checks on custom properties from your content source.
+
+  For creating fully typed plugins (with custom properties), use the following pattern:
+
+  ```ts
+  import { loader } from "fumadocs-core/source";
+  import { docs } from "collections/
+  import { lucideIconsPlugin } from "fumadocs-core/source/lucide-icons";
+
+  export const source = loader(docs.toFumadocsSource(), {
+    baseUrl: "/docs",
+    plugins: ({ typedPlugin }) => [
+      lucideIconsPlugin(),
+      typedPlugin({
+        // the plugin config
+      }),
+    ],
+  });
+  ```
+
+- 42ad84c: **[Loader API] Refactor internal type parameters**
+
+  Internal types like `ContentStorage`, `PageTreeTransformer` now use a single `Config extends SourceConfig` generic parameter.
+
+  It makes extending their parameters easier, this should not affect normal usages.
+
+### Patch Changes
+
+- 2e01720: [Loader API] Support calling `loader().getPage(slugs)` with URI encoded slugs
+
+## 16.0.15
+
+### Patch Changes
+
+- fe380da: feat(waku): WakuLink component to use unstable_prefetchOnEnter for prefetch
+- ade44d0: feat: enhance framework providers to accept custom Link components
+
+## 16.0.14
+
+### Patch Changes
+
+- c3b8474: hotfix Tanstack Router `usePathname` inconsistency due to `useMatch` on layout.
+
+## 16.0.13
+
+## 16.0.12
+
+### Patch Changes
+
+- c5c00e9: Fix `usePathname()` adapter for Tanstack Start
+
+## 16.0.11
+
+### Patch Changes
+
+- ff68f69: [Page Tree Builder] Fix node IDs are not unique across different locales
+- 00058c8: Drop framework-side `createContext`
+
+## 16.0.10
+
+### Patch Changes
+
+- 733b01e: Support `remarkDirectiveAdmonition`, deprecate `remarkAdmonition` in favor of it.
+
+## 16.0.9
+
+## 16.0.8
+
+### Patch Changes
+
+- bc97236: Fix `rehypeCode()` tsdoc for `lazy` option
+- ca09b6a: Core: Support accessing MDX plugins separately at `fumadocs-core/mdx-plugins/*`
+- 117ad86: Add support for using a custom GitHub API base URL
+
+## 16.0.7
+
+### Patch Changes
+
+- f97cd1e: Support `exportAs` in `remarkStructure`.
+- f7e15e2: Support `timeout` in remark image options
+
+## 16.0.6
+
+### Patch Changes
+
+- b95b0cf: improve TOC anchor detection
+
+## 16.0.5
+
+### Patch Changes
+
+- 8221785: hotfix i18n middleware URL formatting
+
+## 16.0.4
+
+### Patch Changes
+
+- 99971c7: Support `external:` to mark links as external in `meta.json`
+
+## 16.0.3
+
+## 16.0.2
+
+### Patch Changes
+
+- d511232: Fix i18n middleware search params handling
+
+## 16.0.1
+
+### Patch Changes
+
+- 45f0c1f: hotfix `<DynamicCodeBlock />` Vite + React 19.2 compat issues
+
+## 16.0.0
+
+### Major Changes
+
+- 851897c: **Remove `fumadocs-core/sidebar` API**
+
+  why: no longer used by Fumadocs UI, and the abstraction isn't good enough.
+
+  migrate: The original component is mostly a wrapper of `react-remove-scroll`, you can use Shadcn UI for pre-built sidebars.
+
+- 4049ccc: **Remove `fumadocs-core/server` export**
+  - **`getGithubLastEdit`:** Moved to `fumadocs-core/content/github`.
+  - **`getTableOfContents`:** Moved to `fumadocs-core/content/toc`.
+  - **`PageTree` and page tree utilities:** Moved to `fumadocs-core/page-tree`.
+  - **`TOCItemType`, `TableOfContents`:** Moved to `fumadocs-core/toc`.
+  - **`createMetadataImage`:** Use the Next.js Metadata API instead.
+
+- 429c41a: **Switch to Shiki JavaScript Regex engine by default**
+
+  This is important for Cloudflare Worker compatibility, JavaScript engine is the new default over Oniguruma (WASM).
+  - `rehype-code`: replaced the `experimentalJSEngine` option with `engine: js | oniguruma`.
+  - `fumadocs-core/highlight`: use JS engine by default, drop custom engine support, use Shiki directly instead.
+
+- 5210f18: **Set minimal React.js version to 19.2.0**
+
+  19.2 has multiple crucial updates that can improve Fumadocs' performance, and it should work seamlessly on mainstream React.js frameworks.
+
+  As a consequence, Next.js 16 is now the minimal version when using Fumadocs UI because Next.js always uses the internal canary version of React.js.
+
+- 42f09c3: **Remove deprecated APIs**
+  - `fumadocs-ui/page`:
+    - removed `<DocsCategory />`.
+    - removed `breadcrumbs.full` option from `<DocsPage />`.
+  - `fumadocs-core/search/algolia`: renamed option `document` to `indexName`.
+  - `fumadocs-core/search`:
+    - remove deprecated signature of `createFromSource()`: migrate to newer usage instead.
+      ```ts
+      export function createFromSource<S extends LoaderOutput<LoaderConfig>>(
+        source: S,
+        pageToIndexFn?: (page: InferPageType<S>) => Awaitable<AdvancedIndex>,
+        options?: Omit<Options<S>, "buildIndex">,
+      ): SearchAPI;
+      ```
+    - remove deprecated parameters in `useSearch()`, pass them in the client object instead.
+  - `fumadocs-core/highlight`: remove deprecated `withPrerenderScript` and `loading` options from `useShiki()`.
+  - `fumadocs-core/i18n`: removed `createI18nMiddleware`, import from `fumadocs-core/i18n/middleware` instead.
+  - `fumadocs-core/source`:
+    - removed deprecated `transformers`, `pageTree.attach*` options from `loader()`.
+    - removed deprecated `page.file` property.
+    - removed `FileInfo` & `parseFilePath` utilities.
+
+- 55afd8a: _Migrate to New Orama Cloud_
+
+  `@orama/core` is the new version of Orama Cloud client. See [their docs](https://docs.orama.com/docs/cloud/data-sources/rest-APIs/official-SDK/introduction) for details.
+
+  When using Fumadocs' Orama Cloud integration, you need to use the new client instead:
+
+  ```ts
+  import { sync } from "fumadocs-core/search/orama-cloud";
+  import { OramaCloud } from "@orama/core";
+
+  // update this
+  const orama = new OramaCloud({
+    projectId: "<project id>",
+    apiKey: "<private api key>",
+  });
+
+  await sync(orama, {
+    index: "<data source id>",
+    documents: records,
+  });
+  ```
+
+### Minor Changes
+
+- cbc93e9: Disable `single` by default on `fumadocs-core/toc` API
+
+### Patch Changes
+
+- 230c6bf: let `getPageTreePeers` handle i18n
+
+## 15.8.4
+
+### Patch Changes
+
+- ce2be59: Loader Plugin: support `name` & `config` options
+- 31b9494: Support `multiple()` for multiple sources in same `loader()`
+
+## 15.8.3
+
+### Patch Changes
+
+- a3a14e7: Bump deps
+
+## 15.8.2
+
+### Patch Changes
+
+- ad9a004: **Deprecate `fumadocs-core/server` export**
+
+  It will be removed on Fumadocs 16, as some APIs under the `/server` export are actually available (and even used) under browser environment.
+
+  A more modularized design will be introduced over the original naming.
+  - **`getGithubLastEdit`:** Moved to `fumadocs-core/content/github`.
+  - **`getTableOfContents`:** Moved to `fumadocs-core/content/toc`.
+  - **`PageTree` and page tree utilities:** Moved to `fumadocs-core/page-tree`.
+  - **`TOCItemType`, `TableOfContents`:** Moved to `fumadocs-core/toc`.
+  - **`createMetadataImage`:** Deprecated, use the Next.js Metadata API instead.
+
+- 90cf1fe: Support Negotiation API
+- 747bdbc: Support lucide react icons plugin for `loader()`
+
+## 15.8.1
+
+### Patch Changes
+
+- 71bce86: Make `loader().getPages()` to return pages from all languages when locale is not specified
+- f04547f: Publish `plugins` API on `loader()`
+
+## 15.8.0
+
+### Minor Changes
+
+- d1ae3e8: **Move `SortedResult` and other search-related types to `fumadocs-core/search`**
+
+  This also exposed the search result highlighter API, you may now use it for highlighting results of your own search integration
+
+  Old export will be kept until the next major release.
+
+- 51268ec: Breadcrumbs API: default `includePage` to `false`.
+
+### Patch Changes
+
+- 655bb46: [Internal] `parseCodeBlockAttributes` include null values, restrict `rehype-code` to only parse `title` and `tab` attributes.
+- 6548a59: Support breadcrumbs for Search API
+- 51268ec: Breadcrumbs API: Fix root folders being filtered when `includeRoot` is set to `true`.
+
+## 15.7.13
+
+### Patch Changes
+
+- 982aed6: Fix `source.getPageByHref()` return no result without explicit `language`
+
+## 15.7.12
+
+### Patch Changes
+
+- 846b28a: Support multiple codeblocks in same tab
+- 2b30315: Support `mode` option in search server
+
+## 15.7.11
+
+## 15.7.10
+
+### Patch Changes
+
+- c948f59: Try to workaround legacy i18n middleware under `/i18n` export without breaking changes
+
+## 15.7.9
+
+### Patch Changes
+
+- d135efd: `transformerIcon` supports SVG string to extend codeblock icons
+- 4082acc: Expose `highlightHast` API
+
+## 15.7.8
+
+### Patch Changes
+
+- f65778d: `Link` improve external link detection by enabling it on any protocols
+- e4c12a3: Add framework adapters to optional peer deps
+
+## 15.7.7
+
+### Patch Changes
+
+- 0b53056: Support `remarkMdxMermaid` - convert `mermaid` codeblocks into `<Mermaid />` component
+- 3490285: Support `remarkMdxFiles` - convert `files` codeblocks into `<Files />` component
+
+## 15.7.6
+
+## 15.7.5
+
+### Patch Changes
+
+- cedc494: Hotfix URL normalization logic
+
+## 15.7.4
+
+## 15.7.3
+
+### Patch Changes
+
+- 6d97379: unify remark nodes parsing & improve types
+- e776ee5: Fix `langAlias` not being passed to Shiki rehype plugin
+
+## 15.7.2
+
+### Patch Changes
+
+- 88b5a4e: Fix duplicate pages in page tree when referencing subpage in meta.json and using `...` or adding the subfolder again
+- 039b24b: Fix failed to update page tree from `loader()`
+- 08eee2b: [`remark-npm`] Enable `npm install` prefix fallback only on old alias
+
+## 15.7.1
+
+### Patch Changes
+
+- 195b090: Support a list of `source` for `loader()` API
+- e1c84a2: Support `fallbackLanguage` for `loader()` i18n API
+
+## 15.7.0
+
+### Minor Changes
+
+- 514052e: **Include locale code into `page.path`**
+
+  Previously when i18n is enabled, `page.path` is not equal to the virtual file paths you passed into `loader()`:
+
+  ```ts
+  const source = loader({
+    source: {
+      files: [
+        {
+          path: "folder/index.cn.mdx",
+          // ...
+        },
+      ],
+    },
+  });
+
+  console.log(source.getPages("cn"));
+  // path: folder/index.mdx
+  ```
+
+  This can be confusing, the only solution to obtain the original path was `page.absolutePath`.
+
+  From now, the `page.path` will also include the locale code:
+
+  ```ts
+  const source = loader({
+    source: {
+      files: [
+        {
+          path: "folder/index.cn.mdx",
+          // ...
+        },
+      ],
+    },
+  });
+
+  console.log(source.getPages("cn"));
+  // path: folder/index.cn.mdx
+  ```
+
+  While this change doesn't affect intended API usages, it **may lead to minor bugs** when advanced usage/hacks involved around `page.path`.
+
+- e785f98: **Introduce page tree `fallback` API**
+
+  Page tree is a tree structure.
+
+  Previously, when an item is excluded from page tree, it is isolated entirely that you cannot display it at all.
+
+  With the new fallback API, isolated pages will go into `fallback` page tree instead:
+
+  ```json
+  {
+    "children": [
+      {
+        "type": "page",
+        "name": "Introduction"
+      }
+    ],
+    "fallback": {
+      "children": [
+        {
+          "type": "page",
+          "name": "Hidden Page"
+        }
+      ]
+    }
+  }
+  ```
+
+  Items in `fallback` are invisible unless you've opened its item.
+
+- 0531bf4: **Introduce page tree transformer API**
+
+  You can now define page tree transformer.
+
+  ```ts
+  export const source = loader({
+    // ...
+    pageTree: {
+      transformers: [
+        {
+          root(root) {
+            return root;
+          },
+          file(node, file) {
+            return node;
+          },
+          folder(node, dir, metaPath) {
+            return node;
+          },
+          separator(node) {
+            return node;
+          },
+        },
+      ],
+    },
+  });
+  ```
+
+- 50eb07f: **Support type-safe i18n config**
+
+  ```ts
+  // lib/source.ts
+  import { defineI18n } from "fumadocs-core/i18n";
+
+  export const i18n = defineI18n({
+    defaultLanguage: "en",
+    languages: ["en", "cn"],
+  });
+  ```
+
+  ```tsx
+  // root layout
+  import { defineI18nUI } from "fumadocs-ui/i18n";
+  import { i18n } from "@/lib/i18n";
+
+  const { provider } = defineI18nUI(i18n, {
+    translations: {
+      cn: {
+        displayName: "Chinese",
+        search: "Translated Content",
+      },
+      en: {
+        displayName: "English",
+      },
+    },
+  });
+
+  function RootLayout({ children }: { children: React.ReactNode }) {
+    return <RootProvider i18n={provider(lang)}>{children}</RootProvider>;
+  }
+  ```
+
+  Although optional, we highly recommend you to refactor the import to i18n middleware:
+
+  ```ts
+  // here!
+  import { createI18nMiddleware } from "fumadocs-core/i18n/middleware";
+  import { i18n } from "@/lib/i18n";
+
+  export default createI18nMiddleware(i18n);
+  ```
+
+### Patch Changes
+
+- e254c65: Simplify Source API storage management
+- ec75601: Support `ReactNode` for icons in page tree
+- 67df155: `createFromSource` support async `buildIndex` and Fumadocs MDX Async Mode
+- b109d06: Redesign `useShiki` & `<DynamicCodeBlock />` to use React 19 hooks
+
+## 15.6.12
+
+## 15.6.11
+
+## 15.6.10
+
+### Patch Changes
+
+- 569bc26: Improve `remark-image`: (1) append public URL to output `src` if it is a URL. (2) ignore if failed to obtain SVG size.
+- 817c237: Support search result highlighting.
+
+  Result nodes now have a `contentWithHighlights` property, you can render it with custom renderer, or a default one provided on Fumadocs UI.
+
+## 15.6.9
+
+### Patch Changes
+
+- 0ab2cdd: remove waku & tanstack peer dependency temporarily (see https://github.com/fuma-nama/fumadocs/issues/2144)
+
+## 15.6.8
+
+## 15.6.7
+
+### Patch Changes
+
+- 6fa1442: Support to override `<HideIfEmpty />` scripts nonce with `<HideIfEmptyProvider />`
+
+## 15.6.6
+
+### Patch Changes
+
+- 1b0e9d5: Add mixedbread integration
+
+## 15.6.5
+
+### Patch Changes
+
+- 658fa96: Support custom options for error handling for `remark-image`
+
+## 15.6.4
+
+## 15.6.3
+
+## 15.6.2
+
+## 15.6.1
+
+### Patch Changes
+
+- 1a902ff: Fix static export map
+
+## 15.6.0
+
+### Minor Changes
+
+- f8d1709: **Redesigned Codeblock Tabs**
+
+  Instead of relying on `Tabs` component, it supports a dedicated tabs component for codeblocks:
+
+  ```tsx
+  <CodeBlockTabs>
+    <CodeBlockTabsList>
+      <CodeBlockTabsTrigger value="value">Name</CodeBlockTabsTrigger>
+    </CodeBlockTabsList>
+    <CodeBlockTab value="value" asChild>
+      <CodeBlock>...</CodeBlock>
+    </CodeBlockTab>
+  </CodeBlockTabs>
+  ```
+
+  The old usage is not deprecated, you can still use them while Fumadocs' remark plugins will generate codeblock tabs using the new way.
+
+### Patch Changes
+
+- d0f8a15: Enable `remarkNpm` by default, replace `remarkInstall` with it.
+- 84918b8: Support passing `tag` to search client/server as string array
+
+## 15.5.5
+
+### Patch Changes
+
+- 0d3f76b: Fix wrong indexing of file system
+
+## 15.5.4
+
+### Patch Changes
+
+- 35c3c0b: Support handling duplicated slugs and conflicts such as `dir/index.mdx` vs `dir.mdx`
+
+## 15.5.3
+
+### Patch Changes
+
+- 7d1ac21: hotfix paths not being normalized on Windows
+
+## 15.5.2
+
+### Patch Changes
+
+- 7a45921: Add `absolutePath` and `path` properties to pages, mark `file` as deprecated
+- 1b7bc4b: Add `@types/react` to optional peer dependency to avoid version conflict in monorepos
+
+## 15.5.1
+
+### Patch Changes
+
+- b4916d2: Move `hide-if-empty` component to Fumadocs Core
+- 8738b9c: Always encode generated slugs for non-ASCII characters in `loader()`
+- a66886b: **Deprecate other parameters for `useDocsSearch()`**
+
+  The new usage passes options to a single object, improving the readability:
+
+  ```ts
+  import { useDocsSearch } from "fumadocs-core/search/client";
+
+  const { search, setSearch, query } = useDocsSearch({
+    type: "fetch",
+    locale: "optional",
+    tag: "optional",
+    delayMs: 100,
+    allowEmpty: false,
+  });
+  ```
+
+## 15.5.0
+
+## 15.4.2
+
+### Patch Changes
+
+- 0ab6c7f: Improve performance by using shallow compare on `useOnChange` by default
+
+## 15.4.1
+
+## 15.4.0
+
+### Minor Changes
+
+- 961b67e: **Bump algolia search to v5**
+
+  This also introduced changes to some APIs since `algoliasearch` v4 and v5 has many differences.
+
+  Now we highly recommend to pass an index name to `sync()`:
+
+  ```ts
+  import { algoliasearch } from "algoliasearch";
+  import { sync } from "fumadocs-core/search/algolia";
+  const client = algoliasearch("id", "key");
+
+  void sync(client, {
+    indexName: "document",
+    documents: records,
+  });
+  ```
+
+  For search client, pass them to `searchOptions`:
+
+  ```tsx
+  "use client";
+
+  import { liteClient } from "algoliasearch/lite";
+  import type { SharedProps } from "fumadocs-ui/components/dialog/search";
+  import SearchDialog from "fumadocs-ui/components/dialog/search-algolia";
+
+  const client = liteClient(appId, apiKey);
+
+  export default function CustomSearchDialog(props: SharedProps) {
+    return (
+      <SearchDialog
+        searchOptions={{
+          client,
+          indexName: "document",
+        }}
+        {...props}
+        showAlgolia
+      />
+    );
+  }
+  ```
+
+### Patch Changes
+
+- 1b999eb: Introduce `<Markdown />` component
+- 7d78bc5: Improve `createRelativeLink` and `getPageByHref` for i18n usage
+
+## 15.3.4
+
+## 15.3.3
+
+### Patch Changes
+
+- 4ae7b4a: Support MDX in codeblock tab value
+
+## 15.3.2
+
+### Patch Changes
+
+- c25d678: Support Shiki focus notation transformer by default
+
+## 15.3.1
+
+### Patch Changes
+
+- 3372792: Support line numbers in codeblock
+
+## 15.3.0
+
+### Patch Changes
+
+- c05dc03: Improve error message of remark image
+
+## 15.2.15
+
+### Patch Changes
+
+- 50db874: Remove placeholder space for codeblocks
+- 79e75c3: Improve default MDX attribute indexing strategy for `remarkStructure`
+
+## 15.2.14
+
+### Patch Changes
+
+- 6ea1718: Fix type inference for `pageTree.attachFile` in `loader()`
+
+## 15.2.13
+
+## 15.2.12
+
+### Patch Changes
+
+- acff667: **Deprecate `createFromSource(source, pageToIndex, options)`**
+
+  Migrate:
+
+  ```ts
+  import { source } from "@/lib/source";
+  import { createFromSource } from "fumadocs-core/search/server";
+
+  // from
+  export const { GET } = createFromSource(
+    source,
+    (page) => ({
+      title: page.data.title,
+      description: page.data.description,
+      url: page.url,
+      id: page.url,
+      structuredData: page.data.structuredData,
+      // use your desired value, like page.slugs[0]
+      tag: "<value>",
+    }),
+    {
+      // options
+    },
+  );
+
+  // to
+  export const { GET } = createFromSource(source, {
+    buildIndex(page) {
+      return {
+        title: page.data.title,
+        description: page.data.description,
+        url: page.url,
+        id: page.url,
+        structuredData: page.data.structuredData,
+        // use your desired value, like page.slugs[0]
+        tag: "<value>",
+      };
+    },
+    // other options
+  });
+  ```
+
+## 15.2.11
+
+### Patch Changes
+
+- 07cd690: Support separators without name
+
+## 15.2.10
+
+## 15.2.9
+
+## 15.2.8
+
+## 15.2.7
+
+### Patch Changes
+
+- ec85a6c: support more options on `remarkStructure`
+- e1a61bf: Support `remarkSteps` plugin
+
+## 15.2.6
+
+### Patch Changes
+
+- d49f9ae: Fix order of `<I18nProvider />`
+- b07e98c: fix `loader().getNodePage()` returning undefined for other locales
+- 3a4bd88: Fix wrong index files output in i18n page tree generation
+
+## 15.2.5
+
+### Patch Changes
+
+- c66ed79: Fix `removeScrollOn` on sidebar primitive
+
+## 15.2.4
+
+### Patch Changes
+
+- 1057957: Fix type problems on dynamic codeblock
+
+## 15.2.3
+
+## 15.2.2
+
+### Patch Changes
+
+- 0829544: deprecate `blockScrollingWidth` in favour of `removeScrollOn`
+
+## 15.2.1
+
+## 15.2.0
+
+### Minor Changes
+
+- 2fd325c: Enable `lazy` on `rehypeCode` by default
+- a7cf4fa: Support other frameworks via `FrameworkProvider`
+
+## 15.1.3
+
+### Patch Changes
+
+- b734f92: support `mdxJsxFlowElement` in `remarkStructure`
+
+## 15.1.2
+
+### Patch Changes
+
+- 3f580c4: Support directory-based i18n routing
+
+## 15.1.1
+
+### Patch Changes
+
+- c5add28: use internal store for Shiki highlighter instances
+- f3cde4f: Support markdown files with default local code in file name
+- 7c8a690: Improve file info interface
+- b812457: Remove Next.js usage from search server
+
+## 15.1.0
+
+### Minor Changes
+
+- f491f6f: Lazy build page tree by default
+- f491f6f: Support `getPageByHref()` on loader API
+
+### Patch Changes
+
+- f491f6f: Fix `findNeighbour()` doesn't exclude other nodes of another root
+
+## 15.0.18
+
+## 15.0.17
+
+### Patch Changes
+
+- 72f79cf: Support Orama Cloud crawler index
+
+## 15.0.16
+
+## 15.0.15
+
+### Patch Changes
+
+- 9f6d39a: Fix peer deps
+- 2035cb1: remove hook-level cache from `useDocsSearch()`
+
+## 15.0.14
+
+### Patch Changes
+
+- 37dc0a6: Update `image-size` to v2
+- 796cc5e: Upgrade to Orama v3
+- 2cc0be5: Support to add custom serialization to `remarkStructure` via `data._string`
+
+## 15.0.13
+
+## 15.0.12
+
+### Patch Changes
+
+- 3534a10: Move `fumadocs-core` highlighting utils to `fumadocs-core/highlight` and `fumadocs-core/highlight/client`
+- 93952db: Generate a `$id` attribute to page tree nodes
+
+## 15.0.11
+
+## 15.0.10
+
+### Patch Changes
+
+- d95c21f: add `initOrama` option to static client
+
+## 15.0.9
+
+## 15.0.8
+
+## 15.0.7
+
+### Patch Changes
+
+- 5deaf40: Support icons in separators of `meta.json`
+
+## 15.0.6
+
+### Patch Changes
+
+- 08236e1: Support custom toc settings in headings
+- a06af26: Support pages without `title`
+
+## 15.0.5
+
+## 15.0.4
+
+## 15.0.3
+
+## 15.0.2
+
+## 15.0.1
+
+## 15.0.0
+
+### Minor Changes
+
+- 581f4a5: **Support code block tabs without hardcoding `<Tabs />` items**
+
+  **migrate:** Use the `remarkCodeTab` plugin.
+
+  **before:**
+
+  ````mdx
+  import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+
+  <Tabs items={["Tab 1", "Tab 2"]}>
+
+  ```ts tab
+  console.log("A");
+  ```
+
+  ```ts tab
+  console.log("B");
+  ```
+
+  </Tabs>
+  ````
+
+  **after:**
+
+  ````mdx
+  import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+
+  ```ts tab="Tab 1"
+  console.log("A");
+  ```
+
+  ```ts tab="Tab 2"
+  console.log("B");
+  ```
+  ````
+
+### Patch Changes
+
+- 5b8cca8: Fix `remarkAdmonition` missing some types from Docusaurus
+- a763058: Support reversed rest items in `meta.json`
+
+## 14.7.7
+
+## 14.7.6
+
+### Patch Changes
+
+- b9601fb: Update Shiki
+
+## 14.7.5
+
+### Patch Changes
+
+- 777188b: [Page Tree Builder] Inline folders without children
+
+## 14.7.4
+
+### Patch Changes
+
+- bb73a72: Fix search params being ignored in middleware redirection
+- 69bd4fe: Support `source.getPageTree()` function
+
+## 14.7.3
+
+### Patch Changes
+
+- 041f230: Support trailing slash
+
+## 14.7.2
+
+### Patch Changes
+
+- 14b280c: Revert default i18n config
+
+## 14.7.1
+
+### Patch Changes
+
+- 72dc093: Add chinese i18n configuration for Orama search if not specified
+
+## 14.7.0
+
+### Minor Changes
+
+- 97ed36c: Remove defaults from `loader` and deprecate `rootDir` options
+
+## 14.6.8
+
+## 14.6.7
+
+### Patch Changes
+
+- 5474343: Export dynamic-link
+
+## 14.6.6
+
+## 14.6.5
+
+### Patch Changes
+
+- 969da26: Improve i18n api
+
+## 14.6.4
+
+### Patch Changes
+
+- b71064a: Support remark plugins & vfile input on `getTableOfContents`
+
+## 14.6.3
+
+## 14.6.2
+
+### Patch Changes
+
+- 2357d40: Fix typings of `HighlightOptions`
+
+## 14.6.1
+
+## 14.6.0
+
+### Minor Changes
+
+- bebb16b: Add support for pre-rendering to `useShiki` hook
+- 050b326: Support codeblock `tab` meta without value
+
+### Patch Changes
+
+- 4dfde6b: support additional `components` option of Orama search
+- 4766292: Support React 19
+
+## 14.5.6
+
+### Patch Changes
+
+- 9a18c14: Downgrade Orama to v2 to fix external tokenizers
+
+## 14.5.5
+
+## 14.5.4
+
+## 14.5.3
+
+## 14.5.2
+
+## 14.5.1
+
+## 14.5.0
+
+## 14.4.2
+
+## 14.4.1
+
+## 14.4.0
+
+## 14.3.1
+
+## 14.3.0
+
+## 14.2.1
+
+### Patch Changes
+
+- ca94bfd: Support sync usage of `getTableOfContents`
+
+## 14.2.0
+
+### Minor Changes
+
+- e248a0f: Support Orama Cloud integration
+
+## 14.1.1
+
+### Patch Changes
+
+- 1573d63: Support URL format `publicDir` in Remark Image plugin
+
+## 14.1.0
+
+### Minor Changes
+
+- b262d99: bundle default Shiki transformers
+- 90725c1: Support server-side `highlight` and client `useShiki` hook
+
+### Patch Changes
+
+- d6d290c: Upgrade Shiki
+- 4a643ff: Prefer `peerDependenciesMeta` over `optionalDependencies`
+- b262d99: Support JSX comment syntax on default Shiki transformers
+
+## 14.0.2
+
+## 14.0.1
+
+## 14.0.0
+
+### Major Changes
+
+- e45bc67: **Remove deprecated `fumadocs-core/middleware` export**
+
+  **migrate:** Use `fumadocs-core/i18n`.
+
+- d9e908e: **Remove deprecated `languages` and `defaultLanguage` option from loader**
+
+  **migrate:** Use I18n config API
+
+- 9a0b09f: **Change usage of `useDocsSearch`**
+
+  **why:** Allow static search
+
+  **migrate:**
+
+  Pass client option, it can be algolia, static, or fetch (default).
+
+  ```ts
+  import { useDocsSearch } from "fumadocs-core/search/client";
+
+  const { search, setSearch, query } = useDocsSearch({
+    type: "fetch",
+    api: "/api/search", // optional
+  });
+  ```
+
+- 9a0b09f: **Remove Algolia Search Client**
+
+  **why:** Replace by the new search client
+
+  **migrate:**
+
+  ```ts
+  import { useDocsSearch } from "fumadocs-core/search/client";
+
+  const { search, setSearch, query } = useDocsSearch({
+    type: "algolia",
+    index,
+    ...searchOptions,
+  });
+  ```
+
+- 9a0b09f: **Refactor import path of `fumadocs-core/search-algolia/server` to `fumadocs-core/search/algolia`**
+- d9e908e: Improved usage for `createI18nSearchAPI` (replaced `createI18nSearchAPIExperimental`)
+- d9e908e: Replace `fumadocs-core/search/shared` with `fumadocs-core/server`
+
+### Minor Changes
+
+- d9e908e: Create search api from source (Support i18n without modifying search route handler)
+- 367f4c3: Support referencing original page/meta from page tree nodes
+- e1ee822: Support hast nodes in `toc` variable
+- 979e301: Replace flexearch with Orama
+- 979e301: Support static search (without server)
+- d9e908e: Support creating metadata API from sources
+
+### Patch Changes
+
+- f949520: Support Shiki diff transformer
+- e612f2a: Make compatible with Next.js 15
+- 8ef00dc: Apply `hideLocale` to Source `getPage` APIs
+- 15781f0: Fix breadcrumb empty when `includePage` isn't specified
+- be820c4: Bump deps
+
+## 13.4.10
+
+### Patch Changes
+
+- 6231ad3: fix(types): PageData & MetaData exactOptionalPropertyTypes compat
+
+## 13.4.9
+
+### Patch Changes
+
+- 083f04a: Fix link items text
+
+## 13.4.8
+
+### Patch Changes
+
+- 78e59e7: Support to add icons to link items in meta.json
+
+## 13.4.7
+
+### Patch Changes
+
+- 6e1923e: Improve anchors observer
+
+## 13.4.6
+
+### Patch Changes
+
+- afb697e: Fix Next.js 14.2.8 dynamic import problems
+- daa66d2: Support generating static params automatically with Source API
+
+## 13.4.5
+
+## 13.4.4
+
+### Patch Changes
+
+- 729928e: Fix build error without JS engine
+
+## 13.4.3
+
+## 13.4.2
+
+### Patch Changes
+
+- 7dabbc1: Remark Image: Support relative imports
+- 0c251e5: Bump deps
+- 3b56170: Support to enable experiment Shiki JS engine
+
+## 13.4.1
+
+### Patch Changes
+
+- 95dbba1: Scan table into search indexes by default
+
+## 13.4.0
+
+## 13.3.3
+
+### Patch Changes
+
+- f8cc167: Ignore numeric locale file name
+
+## 13.3.2
+
+### Patch Changes
+
+- 0e0ef8c: Support headless search servers
+
+## 13.3.1
+
+## 13.3.0
+
+### Minor Changes
+
+- fd46eb6: Export new `createI18nSearchAPIExperimental` API for i18n config
+- fd46eb6: Introduce `i18n` config for Core APIs
+- fd46eb6: Deprecated `languages` and `defaultLanguage` option on Source API, replaced with `i18n` config
+- fd46eb6: Move I18n middleware to `fumadocs-core/i18n`
+- 9aae448: Support multiple toc active items
+- c542561: Use cookie to store active locale on `always` mode
+
+### Patch Changes
+
+- 4916f84: Improve Source API performance
+
+## 13.2.2
+
+### Patch Changes
+
+- 36b771b: Remark Image: Support relative import path
+- 61b91fa: Improve Fumadocs OpenAPI support
+
+## 13.2.1
+
+### Patch Changes
+
+- 17fa173: Remark Image: Support fetching image size of external urls
+
+## 13.2.0
+
+### Patch Changes
+
+- 96c9dda: Change Heading scroll margins
+
+## 13.1.0
+
+### Patch Changes
+
+- f280191: Page Tree Builder: Sort folders to bottom
+
+## 13.0.7
+
+### Patch Changes
+
+- 37bbfff: Improve active anchor observer
+
+## 13.0.6
+
+## 13.0.5
+
+### Patch Changes
+
+- 2cf65f6: Support debounce value on algolia search client
+
+## 13.0.4
+
+### Patch Changes
+
+- 5355391: Support indexing description field on documents
+
+## 13.0.3
+
+### Patch Changes
+
+- 978342f: Type file system utilities (Note: This is an internal module, you're not supposed to reference it)
+
+## 13.0.2
+
+### Patch Changes
+
+- 4819820: Page Tree Builder: Fallback to page icon when metadata doesn't exist
+
+## 13.0.1
+
+## 13.0.0
+
+### Major Changes
+
+- 09c3103: **Change usage of TOC component**
+
+  **why:** Improve the flexibility of headless components
+
+  **migrate:**
+
+  Instead of
+
+  ```tsx
+  import * as Base from "fumadocs-core/toc";
+
+  return (
+    <Base.TOCProvider>
+      <Base.TOCItem />
+    </Base.TOCProvider>
+  );
+  ```
+
+  Use
+
+  ```tsx
+  import * as Base from "fumadocs-core/toc";
+
+  return (
+    <Base.AnchorProvider>
+      <Base.ScrollProvider>
+        <Base.TOCItem />
+        <Base.TOCItem />
+      </Base.ScrollProvider>
+    </Base.AnchorProvider>
+  );
+  ```
+
+- b02eebf: **Remove deprecated option `defaultLang`**
+
+  **why:** The default language feature has been supported by Shiki Rehype integration, you should use it directly.
+
+  **migrate:** Rename to `defaultLanguage`.
+
+### Minor Changes
+
+- c714eaa: Support Remark Admonition plugin
+
+## 12.5.6
+
+## 12.5.5
+
+## 12.5.4
+
+### Patch Changes
+
+- fccdfdb: Improve TOC Popover design
+- 2ffd5ea: Support folder group on Page Tree Builder
+
+## 12.5.3
+
+## 12.5.2
+
+### Patch Changes
+
+- a5c34f0: Support specifying the url of root node when breadcrumbs have `includeRoot` enabled
+
+## 12.5.1
+
+## 12.5.0
+
+### Minor Changes
+
+- b9fa99d: Support `tag` facet field for Algolia Search Integration
+
+### Patch Changes
+
+- 525925b: Support including root folder into breadcrumbs
+
+## 12.4.2
+
+### Patch Changes
+
+- 503e8e9: Support `keywords` API in advanced search
+
+## 12.4.1
+
+## 12.4.0
+
+## 12.3.6
+
+## 12.3.5
+
+## 12.3.4
+
+## 12.3.3
+
+### Patch Changes
+
+- 90d51cb: Fix problem with I18n middleware & language toggle
+
+## 12.3.2
+
+### Patch Changes
+
+- ca7d0f4: Support resolving async search indexes
+
+## 12.3.1
+
+### Patch Changes
+
+- cf852f6: Add configurable delayMs Parameter for Debounced Search Performance
+
+## 12.3.0
+
+### Minor Changes
+
+- ce3c8ad: Page Tree Builder: Support `defaultLanguage` option
+- ce3c8ad: Support hiding locale prefixes with I18n middleware
+
+## 12.2.5
+
+## 12.2.4
+
+## 12.2.3
+
+## 12.2.2
+
+## 12.2.1
+
+## 12.2.0
+
+### Minor Changes
+
+- b70ff06: Support `!name` to hide pages on `meta.json`
+
+## 12.1.3
+
+## 12.1.2
+
+### Patch Changes
+
+- b4856d1: Fix `createGetUrl` wrong locale position
+
+## 12.1.1
+
+### Patch Changes
+
+- a39dbcb: Export `loadFiles` from Source API
+
+## 12.1.0
+
+### Minor Changes
+
+- 0a377a9: **Support writing code blocks as a `<Tab />` element.**
+
+  ````mdx
+  import { Tabs } from "fumadocs-ui/components/tabs";
+
+  <Tabs items={["Tab 1", "Tab 2"]}>
+
+  ```js tab="Tab 1"
+  console.log("Hello");
+  ```
+
+  ```js tab="Tab 2"
+  console.log("Hello");
+  ```
+
+  </Tabs>
+  ````
+
+  This is same as wrapping the code block in a `<Tab />` component.
+
+- 0a377a9: **Pass the `icon` prop to code blocks as HTML instead of MDX attribute.**
+
+  **why:** Only MDX flow elements support attributes with JSX value, like:
+
+  ```mdx
+  <Pre icon={<svg />}>...</Pre>
+  ```
+
+  As Shiki outputs hast elements, we have to convert the output of Shiki to an MDX flow element so that we can pass the `icon` property.
+
+  Now, `rehype-code` passes an HTML string instead of JSX, and render it with `dangerouslySetInnerHTML`:
+
+  ```mdx
+  <Pre icon="<svg />">...</Pre>
+  ```
+
+  **migrate:** Not needed, it should work seamlessly.
+
+## 12.0.7
+
+## 12.0.6
+
+### Patch Changes
+
+- 7a29b79: Remove default language from `source.getLanguages`
+- b0c1242: Support Next.js 15 cache behaviour in `getGithubLastEdit`
+
+## 12.0.5
+
+## 12.0.4
+
+### Patch Changes
+
+- 72dbaf1: Support `ReactNode` in page tree, table of contents and breadcrumb type definitions
+- 51ca944: Support including separators in breadcrumbs
+
+## 12.0.3
+
+### Patch Changes
+
+- 053609d: Rename `defaultLang` to `defaultLanguage`
+
+## 12.0.2
+
+## 12.0.1
+
+## 12.0.0
+
+### Major Changes
+
+- 98430e9: **Remove `minWidth` deprecated option from `Sidebar` component.**
+
+  **migrate:** Use `blockScrollingWidth` instead
+
+### Minor Changes
+
+- 57eb762: Support attaching custom properties during page tree builder process
+
+### Patch Changes
+
+- d88dfa6: Support attaching `id` property to page trees
+- ba20694: Remark Headings: Support code syntax in headings
+
+## 11.3.2
+
+### Patch Changes
+
+- 1b8e12b: Use `display: grid` for codeblocks
+
+## 11.3.1
+
+## 11.3.0
+
+### Minor Changes
+
+- 917d87f: Rename sidebar primitive `minWidth` prop to `blockScrollingWidth`
+
+## 11.2.2
+
+## 11.2.1
+
+## 11.2.0
+
+## 11.1.3
+
+### Patch Changes
+
+- 88008b1: Fix ESM compatibility problems in i18n middleware
+- 944541a: Add dynamic page url according to locale
+- 07a9312: Improve Search I18n utilities
+
+## 11.1.2
+
+## 11.1.1
+
+### Patch Changes
+
+- 8ef2b68: Bump deps
+- 26f464d: Support relative paths in meta.json
+- 26f464d: Support non-external link in meta.json
+
+## 11.1.0
+
+## 11.0.8
+
+### Patch Changes
+
+- 98258b5: Fix regex problems
+
+## 11.0.7
+
+### Patch Changes
+
+- f7c2c5c: Fix custom heading ids conflicts with MDX syntax
+
+## 11.0.6
+
+### Patch Changes
+
+- 5653d5d: Support customising heading id in headings
+- 5653d5d: Support custom heading slugger
+
+## 11.0.5
+
+## 11.0.4
+
+### Patch Changes
+
+- 7b61b2f: Migrate `fumadocs-ui` to fully ESM, adding support for ESM `tailwind.config` file
+
+## 11.0.3
+
+## 11.0.2
+
+## 11.0.1
+
+## 11.0.0
+
+### Major Changes
+
+- 2d8df75: Remove `cwd` option from `remark-dynamic-content`
+
+  why: Use `cwd` from vfile
+
+  migrate: Pass the `cwd` option from remark instead
+
+- 92cb12f: Simplify Source API virtual storage.
+
+  why: Improve performance
+
+  migrate:
+
+  ```diff
+  - storage.write('path.mdx', { type: 'page', ... })
+  - storage.readPage('page')
+  + storage.write('path.mdx', 'page', { ... })
+  + storage.read('page', 'page')
+  ```
+
+  Transformers can now access file loader options.
+
+  ```ts
+  load({
+    transformers: [
+      ({ storage, options }) => {
+        options.getUrl();
+        options.getSlugs();
+      },
+    ],
+  });
+  ```
+
+- f75287d: **Introduce `fumadocs-docgen` package.**
+
+  Offer a better authoring experience for advanced use cases.
+  - Move `remark-dynamic-content` and `remark-install` plugins to the new package `fumadocs-docgen`.
+  - Support Typescript generator by default
+
+  **Usage**
+
+  Add the `remarkDocGen` plugin to your remark plugins.
+
+  ```ts
+  import { remarkDocGen, fileGenerator } from "fumadocs-docgen";
+
+  remark().use(remarkDocGen, { generators: [fileGenerator()] });
+  ```
+
+  Generate docs with code blocks.
+
+  ````mdx
+  ```json doc-gen:<generator>
+  {
+    // options
+  }
+  ```
+  ````
+
+  **Migrate**
+
+  For `remarkDynamicContent`, enable `fileGenerator` and use this syntax:
+
+  ````mdx
+  ```json doc-gen:file
+  {
+    "file": "./path/to/my-file.txt"
+  }
+  ```
+  ````
+
+  For `remarkInstall`, it remains the same:
+
+  ```ts
+  import { remarkInstall } from "fumadocs-docgen";
+  ```
+
+- 2d8df75: Remove support for `getTableOfContentsFromPortableText`
+
+  why: Sanity integration should be provided by 3rd party integrations
+
+  migrate: Use built-in sources, or write a custom implementation
+
+## 10.1.3
+
+### Patch Changes
+
+- bbad52f: Support `bun` in `remark-install` plugin
+
+## 10.1.2
+
+## 10.1.1
+
+### Patch Changes
+
+- 779c599: Mark `getTableOfContentsFromPortableText` deprecated
+- 0c01300: Fix remark-dynamic-content ignored code blocks
+- 779c599: Support relative resolve path for remark-dynamic-content
+
+## 10.1.0
+
+## 10.0.5
+
+### Patch Changes
+
+- e47c62f: Improve remark plugin typings
+
+## 10.0.4
+
+## 10.0.3
+
+### Patch Changes
+
+- 6f321e5: Fix type errors of flexseach
+
+## 10.0.2
+
+### Patch Changes
+
+- 10e099a: Remove deprecated options from `fumadocs-core/toc`
+
+## 10.0.1
+
+### Patch Changes
+
+- c9b7763: Update to Next.js 14.1.0
+- 0e78dc8: Support customising search API URL
+- d8483a8: Remove undefined values from page tree
+
+## 10.0.0
+
+### Major Changes
+
+- 321d1e1f: **Move Typescript integrations to `fumadocs-typescript`**
+
+  why: It is now a stable feature
+
+  migrate: Use `fumadocs-typescript` instead.
+
+  ```diff
+  - import { AutoTypeTable } from "fumadocs-ui/components/auto-type-table"
+  + import { AutoTypeTable } from "fumadocs-typescript/ui"
+  ```
+
+### Minor Changes
+
+- b5d16938: Support external link in `pages` property
+
+## 9.1.0
+
+### Minor Changes
+
+- 909b0e35: Support duplicated names with meta and page files
+- 1c388ca5: Support `defaultOpen` for folder nodes
+
+### Patch Changes
+
+- 691f12aa: Source API: Support relative paths as root directory
+
+## 9.0.0
+
+## 8.3.0
+
+## 8.2.0
+
+### Minor Changes
+
+- 5c24659: Support code block icons
+
+## 8.1.1
+
+## 8.1.0
+
+### Minor Changes
+
+- eb028b4: Migrate to shiki
+- 054ec60: Support generating docs for Typescript file
+
+### Patch Changes
+
+- 6c5a39a: Rename Git repository to `fumadocs`
+
+## 8.0.0
+
+### Major Changes
+
+- 2ea9437: **Migrate to rehype-shikiji**
+  - Dropped support for inline code syntax highlighting
+  - Use notation-based word/line highlighting instead of meta string
+
+  Before:
+
+  ````md
+  ```ts /config/ {1}
+  const config = "Hello";
+
+  something.call(config);
+  ```
+  ````
+
+  After:
+
+  ````md
+  ```ts
+  // [!code word:config]
+  const config = "Hello"; // [!code highlight]
+
+  something.call(config);
+  ```
+  ````
+
+  Read the docs of Shikiji for more information.
+
+- cdff313: **Separate Contentlayer integration into another package**
+
+  why: As Fumadocs MDX is the preferred default source, Contentlayer should be optional.
+
+  migrate:
+
+  Install `fumadocs-contentlayer`.
+
+  ```diff
+  - import { createContentlayerSource } from "fumadocs-core/contentlayer"
+  + import { createContentlayerSource } from "fumadocs-contentlayer"
+
+  - import { createConfig } from "fumadocs-core/contentlayer/configuration"
+  + import { createConfig } from "fumadocs-contentlayer/configuration"
+  ```
+
+- 2b11c20: **Rename to Fumadocs**
+
+  `next-docs-zeta` -> `fumadocs-core`
+
+  `next-docs-ui` -> `fumadocs-ui`
+
+  `next-docs-mdx` -> `fumadocs-mdx`
+
+  `@fuma-docs/openapi` -> `fumadocs-openapi`
+
+  `create-next-docs-app` -> `create-fumadocs-app`
+
+### Minor Changes
+
+- 1a346a1: Add `remark-image` plugin that converts relative image urls into static image imports (Inspired by Nextra)
+
+## 7.1.2
+
+## 7.1.1
+
+## 7.1.0
+
+## 7.0.0
+
+### Major Changes
+
+- 9929c5b: **Migrate Contentlayer Integration to Source API**
+
+  `createContentlayer` is now replaced by `createContentlayerSource`.
+
+  You should configure base URL and root directory in the loader instead of Contentlayer configuration.
+
+  It's no longer encouraged to access `allDocs` directly because they will not include `url` property anymore. Please consider `getPages` instead.
+
+  ```ts
+  import { allDocs, allMeta } from "contentlayer/generated";
+  import { createContentlayerSource } from "next-docs-zeta/contentlayer";
+  import { loader } from "next-docs-zeta/source";
+
+  export const { getPage, pageTree, getPages } = loader({
+    baseUrl: "/docs",
+    rootDir: "docs",
+    source: createContentlayerSource(allMeta, allDocs),
+  });
+  ```
+
+  The interface is very similar, but you can only access Contentlayer properties from `page.data`.
+
+  ```diff
+  - <Content code={page.body.code} />
+  + <Content code={page.data.body.code} />
+  ```
+
+- 9929c5b: **Source API**
+
+  To reduce boilerplate, the Source API is now released to handle File-system based files.
+
+  Thanks to this, you don't have to deal with the inconsistent behaviours between different content sources anymore.
+
+  The interface is now unified, you can easily plug in a content source.
+
+  ```ts
+  import { map } from "@/.map";
+  import { createMDXSource } from "next-docs-mdx";
+  import { loader } from "next-docs-zeta/source";
+
+  export const { getPage, getPages, pageTree } = loader({
+    baseUrl: "/docs",
+    rootDir: "docs",
+    source: createMDXSource(map),
+  });
+  ```
+
+  **Page Tree Builder API is removed in favor of this**
+
+- 49201be: **Change `remarkToc` to `remarkHeading`**
+
+  The previous `remarkToc` plugin only extracts table of contents from documents, now it also adds the `id` property to all heading elements.
+
+  ```diff
+  - import { remarkToc } from "next-docs-zeta/mdx-plugins"
+  + import { remarkHeading } from "next-docs-zeta/mdx-plugins"
+  ```
+
+- 4c1334e: **Improve `createI18nMiddleware` function**
+
+  Now, you can export the middleware directly without a wrapper.
+
+  From:
+
+  ```ts
+  export default function middleware(request: NextRequest) {
+    return createI18nMiddleware(...);
+  }
+  ```
+
+  To:
+
+  ```ts
+  export default createI18nMiddleware({
+    defaultLanguage,
+    languages,
+  });
+  ```
+
+### Minor Changes
+
+- 338ea98: **Export `create` function for Contentlayer configuration**
+
+  If you want to include other document types, or override the output configuration, the `create` function can return the fields and document types you need.
+
+  ```ts
+  import { create } from "next-docs-zeta/contentlayer/configuration";
+
+  const config = create(options);
+
+  export default {
+    contentDirPath: config.contentDirPath,
+    documentTypes: [config.Docs, config.Meta],
+    mdx: config.mdx,
+  };
+  ```
+
+- 9929c5b: **Support multiple page tree roots**
+
+  You can specify a `root` property in `meta.json`, the nearest root folder will be used as the root of page tree instead.
+
+  ```json
+  {
+    "title": "Hello World",
+    "root": true
+  }
+  ```
+
+## 6.1.0
+
+### Minor Changes
+
+- f39ae40: **Forward ref to `Link` and `DynamicLink` component**
+
+  **Legacy import name `SafeLink` is now removed**
+
+  ```diff
+  - import { SafeLink } from "next-docs-zeta/link"
+  + import Link from "next-docs-zeta/link"
+  ```
+
+## 6.0.2
+
+## 6.0.1
+
+## 6.0.0
+
+### Major Changes
+
+- 9ef047d: **Pre-bundle page urls into raw pages.**
+
+  This means you don't need `getPageUrl` anymore for built-in adapters, including `next-docs-mdx` and Contentlayer. It is now replaced by the `url` property from the pages array provided by your adapter.
+
+  Due to this change, your old configuration might not continue to work.
+
+  ```diff
+  import { fromMap } from 'next-docs-mdx/map'
+
+  fromMap({
+  -  slugs: ...
+  +  getSlugs: ...
+  })
+  ```
+
+  For Contentlayer, the `getUrl` option is now moved to `createConfig`.
+
+## 5.0.0
+
+### Minor Changes
+
+- de44efe: Migrate to Shikiji
+- de44efe: Support code highlighting options
+
+## 4.0.9
+
+### Patch Changes
+
+- a883009: Fix empty extracted paragraphs in `remark-structure`
+
+## 4.0.8
+
+### Patch Changes
+
+- e0c5c96: Make ESM only
+
+## 4.0.7
+
+### Patch Changes
+
+- b9af5ed: Update tsup & dependencies
+
+## 4.0.6
+
+### Patch Changes
+
+- ff38f6e: Replace `getGitLastEditTime` with new `getGithubLastEdit` API
+
+## 4.0.5
+
+## 4.0.4
+
+## 4.0.3
+
+### Patch Changes
+
+- 0cc10cb: Support custom build page tree options
+
+## 4.0.2
+
+## 4.0.1
+
+### Patch Changes
+
+- 2da93d8: Support generating package install codeblocks automatically
+- 01b23e2: Support Next.js 14
+
+## 4.0.0
+
+### Major Changes
+
+- 6c4a782: Create `PageTreeBuilder` API
+
+  The old `buildPageTree` function provided by 'next-docs-zeta/contentlayer' is
+  now removed. Please use new API directly, or use the built-in
+  `createContentlayer` utility instead.
+
+  ```diff
+  - import { buildPageTree } from 'next-docs-zeta/contentlayer'
+  + import { createPageTreeBuilder } from 'next-docs-zeta/server'
+  ```
+
+### Minor Changes
+
+- 6c4a782: Improve CommonJS/ESM compatibility
+
+  Since this release, all server utilities will be CommonJS by default unless
+  they have referenced ESM modules in the code. For instance,
+  `next-docs-zeta/middleware` is now a CommonJS file. However, some modules,
+  such as `next-docs-zeta/server` requires ESM-only package, hence, they remain
+  an ESM file.
+
+  Notice that the extension of client-side files is now `.js` instead of `.mjs`,
+  but they're still ESM.
+
+  **Why?**
+
+  After migrating to `.mjs` Next.js config file, some imports stopped to work.
+  The built-in Next.js bundler seems can't resolve these `next` imports in
+  external packages, causing errors when modules have imported Next.js itself
+  (e.g. `next/image`) in the code.
+
+  By changing client-side files extension to `.mjs` and using CommonJS for
+  server-side files, this error is solved.
+
+## 4.0.0
+
+### Major Changes
+
+- 24245a3: Create `PageTreeBuilder` API
+
+  The old `buildPageTree` function provided by 'next-docs-zeta/contentlayer' is
+  now removed. Please use new API directly, or use the built-in
+  `createContentlayer` utility instead.
+
+  ```diff
+  - import { buildPageTree } from 'next-docs-zeta/contentlayer'
+  + import { createPageTreeBuilder } from 'next-docs-zeta/server'
+  ```
+
+### Minor Changes
+
+- 678cd3d: Improve CommonJS/ESM compatibility
+
+  Since this release, all server utilities will be CommonJS by default unless
+  they have referenced ESM modules in the code. For instance,
+  `next-docs-zeta/middleware` is now a CommonJS file. However, some modules,
+  such as `next-docs-zeta/server` requires ESM-only package, hence, they remain
+  an ESM file.
+
+  Notice that the extension of client-side files is now `.js` instead of `.mjs`,
+  but they're still ESM.
+
+  **Why?**
+
+  After migrating to `.mjs` Next.js config file, some imports stopped to work.
+  The built-in Next.js bundler seems can't resolve these `next` imports in
+  external packages, causing errors when modules have imported Next.js itself
+  (e.g. `next/image`) in the code.
+
+  By changing client-side files extension to `.mjs` and using CommonJS for
+  server-side files, this error is solved.
+
+## 3.0.0
+
+### Major Changes
+
+- a4a8120: Update search utilities import paths.
+
+  Search Utilities in `next-docs-zeta/server` is now moved to
+  `next-docs-zeta/search` and `next-docs-zeta/server-algolia`.
+
+  Client-side Changes: `next-docs-zeta/search` -> `next-docs-zeta/search/client`
+  `next-docs-zeta/search-algolia` -> `next-docs-zeta/search-algolia/client`
+
+  If you're using Next Docs UI, make sure to import the correct path.
+
+### Minor Changes
+
+- 7a0690b: Export remark-toc and remark-structure MDX plugins
+
+### Patch Changes
+
+- 1043532: Type MDX Plugins
+
+## 2.4.1
+
+### Patch Changes
+
+- dfc8b44: Remove tree root node from breadcrumb
+- ef4d8cc: Expose props from SafeLink component
+
+## 2.4.0
+
+### Patch Changes
+
+- 27ce871: Add missing shiki peer deps
+
+## 2.3.3
+
+### Patch Changes
+
+- 634f7d3: Reduce dependencies
+- eac081c: Update github urls & author name
+
+## 2.3.2
+
+## 2.3.1
+
+## 2.3.0
+
+### Minor Changes
+
+- 6664178: Support algolia search
+- a0f9911: Support `useAlgoliaSearch`
+- 6664178: Improve search document structurize algorithm
+
+## 2.2.0
+
+## 2.1.2
+
+### Patch Changes
+
+- dfbbc17: Exclude index page from "..." operator
+- 79227d8: Fix breadcrumb resolve index file
+
+## 2.1.1
+
+## 2.1.0
+
+### Patch Changes
+
+- a5a661e: Remove `item` prop from TOC items
+
+## 2.0.3
+
+## 2.0.2
+
+### Patch Changes
+
+- 74e5e85: Contentlayer: Support rest item in meta.json
+- 72e9fdf: Contentlayer: Support extracting folder in meta.json
+
+## 2.0.1
+
+### Patch Changes
+
+- 48c5256: Contentlayer: Sort pages by default
+
+## 2.0.0
+
+## 1.6.9
+
+## 1.6.8
+
+## 1.6.7
+
+## 1.6.6
+
+## 1.6.5
+
+### Patch Changes
+
+- 79abe84: Support collapsible sidebar
+
+## 1.6.4
+
+## 1.6.3
+
+### Patch Changes
+
+- 8d07003: Replace type of `TreeNode[]` with `PageTree`
+
+## 1.6.2
+
+## 1.6.1
+
+### Patch Changes
+
+- fc6279e: Support get last git edit time
+
+## 1.6.0
+
+### Minor Changes
+
+- edb9930: Redesign Contentlayer adapter API
+
+### Patch Changes
+
+- cdd30d5: Create remark-dynamic-content plugin
+
+## 1.5.3
+
+### Patch Changes
+
+- fa8d4cf: Update dependencies
+
+## 1.5.2
+
+## 1.5.1
+
+## 1.5.0
+
+### Minor Changes
+
+- fb2abb3: Rewrite create search API & stabilize experimental Advanced Search
+
+## 1.4.1
+
+### Patch Changes
+
+- Support better document search with `experimental_initSearchAPI`
+- 3d92c92: Support custom computed fields in Contentlayer
+
+## 1.4.0
+
+### Patch Changes
+
+- 0f106d9: Fix default sidebar element type
+
+## 1.3.1
+
+### Patch Changes
+
+- ff05f5d: Support custom fields in Contentlayer configuration generator
+- 7fb2b9e: Support custom page & folder icons
+
+## 1.3.0
+
+### Minor Changes
+
+- 98226d9: Rewrite slugger and TOC utilities
+
+## 1.2.1
+
+### Patch Changes
+
+- b15895f: Remove url prop from page tree folders
+
+## 1.2.0
+
+### Patch Changes
+
+- 5f248fb: Support Auto Scroll in TOC for headless docs
+
+## 1.1.4
+
+### Patch Changes
+
+- 496a6b0: Configure eslint + prettier
+
+## 1.1.3
+
+### Patch Changes
+
+- 0998b1b: Support edge runtime middlewares
+
+## 1.1.2
+
+### Patch Changes
+
+- Fix aria attributes
+
+## 1.1.1
+
+## 1.1.0
+
+### Patch Changes
+
+- 255fc92: Support finding neighbours of a page & Flatten page tree
+
+## 1.0.0
+
+### Major Changes
+
+- 8e4a001: Rewrite Contentlayer tree builder + Support Context API
+
+### Minor Changes
+
+- 4fa45c0: Add support for dynamic hrefs and relative paths to `<SafeLink />`
+  component
+- 0983891: Add international Docs search
+
+## 0.3.2
+
+## 0.3.1
+
+## 0.3.0
+
+## 0.2.1
+
+### Patch Changes
+
+- 67cd8ab: Remove unused files in dist
+
+## 0.2.0
+
+### Minor Changes
+
+- 5ff94af: Replace TOC data attribute `data-active` with `aria-selected`
+
+### Patch Changes
+
+- 5ff94af: Fix contentlayer parser bugs
+
+## 0.1.0
+
+### Minor Changes
+
+- Add get toc utils for sanity (portable text)
+
+## 0.0.2
+
+### Patch Changes
+
+- d909192: Fix several contentlayer scanner bugs
+- e88eec8: Add README

@@ -1,0 +1,565 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import type { Feature, FeatureContext } from '@/features';
+import type { ReactFramework, SourceInfo } from '@/project';
+import { formatRoute, routeModule } from '@/project/route';
+import {
+  addImport,
+  addJsxAttribute,
+  addTanstackPrerender,
+  filterReactRouterPrerenderArray,
+  filterReactRouterRoute,
+  findJsxElement,
+} from '@/codemod';
+import { docs } from './docs';
+import {
+  findSource,
+  posix,
+  reactFramework,
+  registerReactRouterRoutes,
+  scripts,
+  type SourceRef,
+  sourceRef,
+} from './utils';
+
+/** how client code reads public env variables */
+interface Env {
+  prefix: string;
+  read: string;
+}
+
+const publicEnv = (next: boolean): Env =>
+  next
+    ? { prefix: 'NEXT_PUBLIC_', read: 'process.env.NEXT_PUBLIC_' }
+    : { prefix: 'VITE_', read: 'import.meta.env.VITE_' };
+
+const dialogImports = `import {
+  SearchDialog,
+  SearchDialogClose,
+  SearchDialogContent,
+  SearchDialogFooter,
+  SearchDialogHeader,
+  SearchDialogIcon,
+  SearchDialogInput,
+  SearchDialogList,
+  SearchDialogOverlay,
+  type SharedProps,
+} from 'fumadocs-ui/components/dialog/search';
+import { useI18n } from 'fumadocs-ui/contexts/i18n';`;
+
+/** `legacy` for hooks in the shape of the deprecated `useDocsSearch()`, like the Typesense adapter */
+const dialogBody = (footer: string, url: string, legacy = false) => `  return (
+    <SearchDialog ${legacy ? 'search={search} onSearchChange={setSearch} isLoading={query.isLoading}' : '{...search}'} {...props}>
+      <SearchDialogOverlay />
+      <SearchDialogContent>
+        <SearchDialogHeader>
+          <SearchDialogIcon />
+          <SearchDialogInput />
+          <SearchDialogClose />
+        </SearchDialogHeader>
+        <SearchDialogList ${legacy ? "items={query.data !== 'empty' ? query.data : null} " : ''}/>
+        <SearchDialogFooter>
+          <a
+            href="${url}"
+            rel="noreferrer noopener"
+            className="ms-auto text-xs text-fd-muted-foreground"
+          >
+            Search powered by ${footer}
+          </a>
+        </SearchDialogFooter>
+      </SearchDialogContent>
+    </SearchDialog>
+  );
+}
+`;
+
+/** `structuredData` is a function on async collections (React Router & TanStack Start) */
+const typesenseDocuments = (
+  { ref, resolved }: SourceRef,
+  async: boolean,
+) => `import { ${ref} } from '@/lib/source';
+import type { DocumentRecord } from 'typesense-fumadocs-adapter';
+
+async function getDocuments() {
+  const documents: DocumentRecord[] = [];
+  for (const page of ${resolved}.getPages()) {
+    documents.push({
+      _id: page.url,
+      structured: ${async ? 'await page.data.structuredData()' : 'page.data.structuredData'},
+      url: page.url,
+      title: page.data.title,
+      description: page.data.description,
+      locale: page.locale,
+    });
+  }
+  return documents;
+}`;
+
+/** `scripts/sync-content.ts`, syncing the search indexes pre-rendered to `output` */
+export const syncScript = (
+  output: string,
+  imports: string,
+  body: string,
+) => `import * as fs from 'node:fs/promises';
+${imports}
+
+const records = JSON.parse(await fs.readFile('${output}', 'utf-8')) as DocumentRecord[];
+
+${body}
+console.log(\`search updated: \${records.length} records\`);
+`;
+
+interface Provider {
+  label: string;
+  hint: string;
+  dependencies: Record<string, string | null>;
+  /** keys exposed to the client, prefixed per framework */
+  publicEnv: string[];
+  privateEnv: string[];
+  /** works without a server at runtime */
+  static: boolean;
+  dialog: (env: Env) => string;
+  /** exports search indexes to a pre-rendered `static.json`, synced by `sync` after build */
+  exportIndexes?: (
+    src: SourceRef,
+    async: boolean,
+  ) => {
+    /** code before the route handler */
+    head: string;
+    /** expression producing the documents */
+    documents: string;
+  };
+  /** `scripts/sync-content.ts`, run after build */
+  sync?: (env: Env, paths: { output: string }) => string;
+  /** server-side search, replaces the default search route */
+  searchRoute?: Record<ReactFramework, string>;
+}
+
+const providers = {
+  'orama-cloud': {
+    label: 'Orama Cloud',
+    hint: 'signup needed',
+    dependencies: { '@orama/core': null },
+    publicEnv: ['ORAMA_DATASOURCE_ID', 'ORAMA_PROJECT_ID', 'ORAMA_API_KEY'],
+    privateEnv: ['ORAMA_PRIVATE_API_KEY'],
+    static: true,
+    dialog: (env) => `'use client';
+${dialogImports}
+import { useOramaCloudSearch } from 'fumadocs-core/search/client';
+import { OramaCloud } from '@orama/core';
+
+const client = new OramaCloud({
+  projectId: ${env.read}ORAMA_PROJECT_ID!,
+  apiKey: ${env.read}ORAMA_API_KEY!,
+});
+
+export default function CustomSearchDialog(props: SharedProps) {
+  const { locale } = useI18n();
+  const search = useOramaCloudSearch({
+    client,
+    locale,
+  });
+
+${dialogBody('Orama', 'https://orama.com')}`,
+    exportIndexes: ({ ref }) => ({
+      head: `import { ${ref} } from '@/lib/source';
+import { toDocuments } from 'fumadocs-core/search/orama-cloud';`,
+      documents: `toDocuments(${ref})`,
+    }),
+    sync: (env, { output }) =>
+      syncScript(
+        output,
+        `import { type OramaDocument as DocumentRecord, sync } from 'fumadocs-core/search/orama-cloud';
+import { OramaCloud } from '@orama/core';`,
+        `const orama = new OramaCloud({
+  projectId: process.env.${env.prefix}ORAMA_PROJECT_ID!,
+  apiKey: process.env.ORAMA_PRIVATE_API_KEY!,
+});
+
+await sync(orama, {
+  index: process.env.${env.prefix}ORAMA_DATASOURCE_ID!,
+  documents: records,
+});
+`,
+      ),
+  },
+  algolia: {
+    label: 'Algolia',
+    hint: 'signup needed',
+    dependencies: { algoliasearch: null },
+    publicEnv: ['ALGOLIA_APP_ID', 'ALGOLIA_SEARCH_KEY'],
+    privateEnv: ['ALGOLIA_WRITE_KEY'],
+    static: true,
+    dialog: (env) => `'use client';
+${dialogImports}
+import { useAlgoliaSearch } from 'fumadocs-core/search/client';
+import { liteClient } from 'algoliasearch/lite';
+
+const algolia = liteClient(${env.read}ALGOLIA_APP_ID!, ${env.read}ALGOLIA_SEARCH_KEY!);
+
+export default function CustomSearchDialog(props: SharedProps) {
+  const { locale } = useI18n();
+  const search = useAlgoliaSearch({
+    client: algolia,
+    indexName: 'document',
+    locale,
+  });
+
+${dialogBody('Algolia', 'https://algolia.com')}`,
+    exportIndexes: ({ ref }) => ({
+      head: `import { ${ref} } from '@/lib/source';
+import { toDocuments } from 'fumadocs-core/search/algolia';`,
+      documents: `toDocuments(${ref})`,
+    }),
+    sync: (env, { output }) =>
+      syncScript(
+        output,
+        `import { type DocumentRecord, sync } from 'fumadocs-core/search/algolia';
+import { algoliasearch } from 'algoliasearch';`,
+        `const client = algoliasearch(
+  process.env.${env.prefix}ALGOLIA_APP_ID!,
+  process.env.ALGOLIA_WRITE_KEY!,
+);
+
+await sync(client, {
+  indexName: 'document',
+  documents: records,
+});
+`,
+      ),
+  },
+  meilisearch: {
+    label: 'Meilisearch',
+    hint: 'self-hosted or cloud',
+    dependencies: { meilisearch: null },
+    publicEnv: ['MEILISEARCH_HOST', 'MEILISEARCH_SEARCH_KEY'],
+    privateEnv: ['MEILISEARCH_ADMIN_KEY'],
+    static: true,
+    dialog: (env) => `'use client';
+${dialogImports}
+import { useMeilisearch } from 'fumadocs-core/search/client';
+import { Meilisearch } from 'meilisearch';
+
+const client = new Meilisearch({
+  host: ${env.read}MEILISEARCH_HOST!,
+  apiKey: ${env.read}MEILISEARCH_SEARCH_KEY!,
+});
+
+export default function CustomSearchDialog(props: SharedProps) {
+  const { locale } = useI18n();
+  const search = useMeilisearch({
+    client,
+    indexName: 'docs',
+    locale,
+  });
+
+${dialogBody('Meilisearch', 'https://www.meilisearch.com')}`,
+    exportIndexes: ({ ref }) => ({
+      head: `import { ${ref} } from '@/lib/source';
+import { toDocuments } from 'fumadocs-core/search/meilisearch';`,
+      documents: `toDocuments(${ref})`,
+    }),
+    sync: (env, { output }) =>
+      syncScript(
+        output,
+        `import { type DocumentRecord, sync } from 'fumadocs-core/search/meilisearch';
+import { Meilisearch } from 'meilisearch';`,
+        `const client = new Meilisearch({
+  host: process.env.${env.prefix}MEILISEARCH_HOST!,
+  apiKey: process.env.MEILISEARCH_ADMIN_KEY!,
+});
+
+await sync(client, {
+  indexName: 'docs',
+  documents: records,
+});
+`,
+      ),
+  },
+  typesense: {
+    label: 'Typesense',
+    hint: 'self-hosted or cloud, community adapter',
+    dependencies: { typesense: null, 'typesense-fumadocs-adapter': null },
+    publicEnv: ['TYPESENSE_URL', 'TYPESENSE_SEARCH_KEY'],
+    privateEnv: ['TYPESENSE_API_KEY'],
+    static: true,
+    dialog: (env) => `'use client';
+${dialogImports}
+import { Client } from 'typesense';
+import { useTypesenseSearch } from 'typesense-fumadocs-adapter/client';
+
+const client = new Client({
+  nodes: [{ url: ${env.read}TYPESENSE_URL! }],
+  apiKey: ${env.read}TYPESENSE_SEARCH_KEY!,
+});
+
+export default function CustomSearchDialog(props: SharedProps) {
+  const { locale } = useI18n();
+  const { search, setSearch, query } = useTypesenseSearch({
+    typesenseCollectionName: 'docs',
+    locale,
+    client,
+  });
+
+${dialogBody('Typesense', 'https://typesense.org', true)}`,
+    exportIndexes: (src, async) => ({
+      head: typesenseDocuments(src, async),
+      documents: 'getDocuments()',
+    }),
+    sync: (env, { output }) =>
+      syncScript(
+        output,
+        `import { type DocumentRecord, sync } from 'typesense-fumadocs-adapter';
+import { Client } from 'typesense';`,
+        `const client = new Client({
+  nodes: [{ url: process.env.${env.prefix}TYPESENSE_URL! }],
+  apiKey: process.env.TYPESENSE_API_KEY!,
+  connectionTimeoutSeconds: 60 * 15,
+});
+
+await sync(client, {
+  typesenseCollectionName: 'docs',
+  documents: records,
+});
+`,
+      ),
+  },
+  mixedbread: {
+    label: 'Mixedbread',
+    hint: 'AI search, signup needed',
+    dependencies: { '@mixedbread/sdk': null },
+    publicEnv: [],
+    privateEnv: ['MXBAI_API_KEY', 'MIXEDBREAD_STORE_ID'],
+    static: false,
+    dialog: () => `'use client';
+${dialogImports}
+import { useFetchSearch } from 'fumadocs-core/search/client';
+
+export default function CustomSearchDialog(props: SharedProps) {
+  const { locale } = useI18n();
+  const search = useFetchSearch({
+    api: '/api/search',
+    locale,
+    // every search is a request to Mixedbread
+    delayMs: 300,
+  });
+
+${dialogBody('Mixedbread', 'https://mixedbread.com')}`,
+    exportIndexes: ({ ref }) => ({
+      head: `import { ${ref} } from '@/lib/source';
+import { toDocuments } from 'fumadocs-core/search/mixedbread';`,
+      documents: `toDocuments(${ref})`,
+    }),
+    sync: (_env, { output }) =>
+      syncScript(
+        output,
+        `import { type DocumentRecord, sync } from 'fumadocs-core/search/mixedbread';
+import Mixedbread from '@mixedbread/sdk';`,
+        `await sync(new Mixedbread(), {
+  storeIdentifier: process.env.MIXEDBREAD_STORE_ID!,
+  documents: records,
+});
+`,
+      ),
+    searchRoute: (() => {
+      const server = `import { createMixedbreadSearchAPI } from 'fumadocs-core/search/mixedbread';
+import Mixedbread from '@mixedbread/sdk';
+
+const server = createMixedbreadSearchAPI({
+  client: new Mixedbread(),
+  storeIdentifier: process.env.MIXEDBREAD_STORE_ID!,
+});
+`;
+      return {
+        next: `${server}
+export const { GET } = server;
+`,
+        'react-router': `import type { Route } from './+types/search';
+${server}
+export async function loader({ request }: Route.LoaderArgs) {
+  return server.GET(request);
+}
+`,
+        'tanstack-start': `import { createFileRoute } from '@tanstack/react-router';
+${server}
+export const Route = createFileRoute('/api/search')({
+  server: {
+    handlers: {
+      GET: async ({ request }) => server.GET(request),
+    },
+  },
+});
+`,
+        waku: `${server}
+export const { GET } = server;
+`,
+      };
+    })(),
+  },
+} satisfies Record<string, Provider>;
+
+export type SearchProvider = keyof typeof providers;
+
+/** pre-rendered on build to export the search indexes */
+export const staticJson = (framework: ReactFramework) =>
+  formatRoute({ segments: ['static.json'] }, framework, null);
+
+export const staticRoute = (framework: ReactFramework, head: string, documents: string) =>
+  routeModule(framework, staticJson(framework), {
+    imports: head,
+    body: `Response.json(await ${documents})`,
+    revalidate: true,
+    static: true,
+  });
+
+/** where `static.json` is pre-rendered on build, `config` is the Vite config of TanStack Start */
+export function staticOutput(framework: ReactFramework, config = ''): string {
+  switch (framework) {
+    case 'next':
+      return '.next/server/app/static.json.body';
+    case 'react-router':
+      return 'build/client/static.json';
+    case 'waku':
+      return 'dist/public/static.json';
+    case 'tanstack-start':
+      // Nitro moves the client output to the directory of its preset
+      if (/preset:\s*['"]vercel['"]/.test(config)) return '.vercel/output/static/static.json';
+      return /\bnitro\(/.test(config) ? '.output/public/static.json' : 'dist/client/static.json';
+  }
+}
+
+/** runs the sync script after build */
+export const syncCommand = 'node --env-file-if-exists=.env.local scripts/sync-content.ts';
+
+/** the files written by a provider, relative to the project, `output` is where `static.json` is pre-rendered */
+export function templates(
+  name: SearchProvider,
+  framework: ReactFramework,
+  { baseDir, source }: { baseDir: string; source: Pick<SourceInfo, 'dynamic' | 'async'> },
+  output: string,
+): [file: string, content: string][] {
+  const provider: Provider = providers[name];
+  const env = publicEnv(framework === 'next');
+  const files: [string, string][] = [
+    [path.posix.join(baseDir, 'components/search.tsx'), provider.dialog(env)],
+  ];
+
+  if (provider.exportIndexes) {
+    const { head, documents } = provider.exportIndexes(sourceRef(source.dynamic), source.async);
+    files.push([
+      path.posix.join(baseDir, staticJson(framework).file),
+      staticRoute(framework, head, documents),
+    ]);
+  }
+  if (provider.sync) files.push(['scripts/sync-content.ts', provider.sync(env, { output })]);
+  return files;
+}
+
+export const search: Feature<{ provider: SearchProvider }> = {
+  id: 'search',
+  title: 'Search',
+  description: 'replace the default search with a 3rd party search solution',
+  requires: [docs],
+  supports: (project) =>
+    project.source.loader ||
+    project.source.dynamic ||
+    '`lib/source.ts` must export a `source` loader',
+  options: {
+    provider: {
+      message: 'Choose a search provider',
+      choices: Object.entries(providers).map(([value, { label, hint }]) => ({
+        value: value as SearchProvider,
+        label,
+        hint,
+      })),
+    },
+  },
+  async apply(ctx, { provider: name }) {
+    const { project } = ctx;
+    const { baseDir } = project;
+    const framework = reactFramework(project);
+    const provider: Provider = providers[name];
+    if (project.static && !provider.static)
+      throw new Error(`${provider.label} requires a server at runtime`);
+
+    const config =
+      framework === 'tanstack-start' && project.configFile
+        ? await fs.readFile(path.join(project.cwd, project.configFile), 'utf-8')
+        : '';
+    const output = staticOutput(framework, config);
+
+    ctx.addDependencies(provider.dependencies);
+    for (const [file, content] of templates(name, framework, project, output))
+      await ctx.write(file, content);
+
+    // other routes (e.g. MCP) also create a search server, only match the search route itself
+    const searchRoute = await findSource(
+      project.cwd,
+      path.join(baseDir, project.info.routesDir),
+      'createFromSource(',
+      (file) => /(^|[\\/])search(\.ts|[\\/]route\.ts)$/.test(file),
+    );
+    if (provider.searchRoute) {
+      if (searchRoute) await ctx.write(searchRoute, provider.searchRoute[framework]);
+      else
+        ctx.note(
+          'Create the search route with `createMixedbreadSearchAPI`, see https://fumadocs.dev/docs/headless/search/mixedbread.',
+        );
+    } else if (searchRoute) {
+      await removeDefaultSearch(ctx, searchRoute);
+    }
+
+    if (provider.exportIndexes) {
+      const route = staticJson(framework);
+      if (framework === 'react-router') {
+        await registerReactRouterRoutes(ctx, [route]);
+      } else if (framework === 'tanstack-start' && project.configFile) {
+        await ctx.source(project.configFile, (file) => addTanstackPrerender(file, [route.path]));
+      }
+    }
+
+    const rootProvider = await findSource(project.cwd, baseDir, '<RootProvider');
+    const edited =
+      rootProvider !== undefined &&
+      (await ctx.source(rootProvider, (file) => {
+        const element = findJsxElement(file, 'RootProvider')?.openingElement;
+        if (!element || file.code.slice(element.start, element.end).includes('search=')) return;
+        addJsxAttribute(file, element, 'search={{ SearchDialog }}');
+        addImport(file, { from: '@/components/search', default: 'SearchDialog' });
+      }));
+    if (!edited)
+      ctx.note(
+        'Pass `search={{ SearchDialog }}` from `@/components/search` to `<RootProvider />`.',
+      );
+
+    if (provider.sync) {
+      await ctx.packageJson((data) => {
+        const build = data.scripts?.build ?? '';
+        if (build.includes('sync-content')) return;
+        scripts(data, { build: build ? `${build} && ${syncCommand}` : syncCommand });
+      });
+    }
+
+    const env = publicEnv(framework === 'next');
+    for (const key of provider.publicEnv) ctx.env(env.prefix + key, '');
+    for (const key of provider.privateEnv) ctx.env(key, '');
+    ctx.note(
+      `Fill the ${provider.label} keys in \`.env.local\`, the search index is synced after each build.\nSee https://fumadocs.dev/docs/headless/search/${name}.`,
+    );
+  },
+};
+
+/** remove the default search route, which conflicts with the search provider */
+async function removeDefaultSearch(ctx: FeatureContext, file: string) {
+  const { baseDir, framework } = ctx.project;
+  await ctx.remove(file);
+  if (framework !== 'react-router') return;
+
+  const entry = posix(path.relative(baseDir, file));
+  await ctx.source(path.join(baseDir, 'routes.ts'), (source) => {
+    filterReactRouterRoute(source, (item) => item.entry !== entry);
+  });
+  await ctx.source('react-router.config.ts', (source) => {
+    filterReactRouterPrerenderArray(source, 'excluded', (item) => item !== '/api/search');
+  });
+}

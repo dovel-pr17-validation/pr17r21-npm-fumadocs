@@ -1,0 +1,177 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GraphQL source > per item with meta files 1`] = `
+[
+  {
+    "data": {
+      "description": undefined,
+      "pages": [
+        "customer",
+        "orders",
+        "search",
+        "node",
+      ],
+      "title": "Queries",
+    },
+    "locale": "$",
+    "path": "queries/meta.json",
+    "type": "meta",
+  },
+  {
+    "data": {
+      "description": undefined,
+      "pages": [
+        "createOrder",
+        "legacyCreateOrder",
+      ],
+      "title": "Mutations",
+    },
+    "locale": "$",
+    "path": "mutations/meta.json",
+    "type": "meta",
+  },
+  {
+    "data": {
+      "description": undefined,
+      "pages": [
+        "orderUpdated",
+      ],
+      "title": "Subscriptions",
+    },
+    "locale": "$",
+    "path": "subscriptions/meta.json",
+    "type": "meta",
+  },
+  {
+    "data": {
+      "description": undefined,
+      "pages": [
+        "queries",
+        "mutations",
+        "subscriptions",
+      ],
+      "title": undefined,
+    },
+    "locale": "$",
+    "path": "meta.json",
+    "type": "meta",
+  },
+]
+`;
+
+exports[`GraphQL source > per item, grouped by kind 1`] = `
+[
+  {
+    "_graphql": {
+      "deprecated": undefined,
+      "items": [
+        {
+          "kind": "query",
+          "name": "customer",
+          "type": "operation",
+        },
+      ],
+      "kind": "query",
+    },
+    "deprecated": undefined,
+    "path": "queries/customer.mdx",
+    "title": "Customer",
+  },
+  {
+    "_graphql": {
+      "deprecated": undefined,
+      "items": [
+        {
+          "kind": "query",
+          "name": "orders",
+          "type": "operation",
+        },
+      ],
+      "kind": "query",
+    },
+    "deprecated": undefined,
+    "path": "queries/orders.mdx",
+    "title": "Orders",
+  },
+  {
+    "_graphql": {
+      "deprecated": undefined,
+      "items": [
+        {
+          "kind": "query",
+          "name": "search",
+          "type": "operation",
+        },
+      ],
+      "kind": "query",
+    },
+    "deprecated": undefined,
+    "path": "queries/search.mdx",
+    "title": "Search",
+  },
+  {
+    "_graphql": {
+      "deprecated": undefined,
+      "items": [
+        {
+          "kind": "query",
+          "name": "node",
+          "type": "operation",
+        },
+      ],
+      "kind": "query",
+    },
+    "deprecated": undefined,
+    "path": "queries/node.mdx",
+    "title": "Node",
+  },
+  {
+    "_graphql": {
+      "deprecated": undefined,
+      "items": [
+        {
+          "kind": "mutation",
+          "name": "createOrder",
+          "type": "operation",
+        },
+      ],
+      "kind": "mutation",
+    },
+    "deprecated": undefined,
+    "path": "mutations/createOrder.mdx",
+    "title": "Create Order",
+  },
+  {
+    "_graphql": {
+      "deprecated": true,
+      "items": [
+        {
+          "kind": "mutation",
+          "name": "legacyCreateOrder",
+          "type": "operation",
+        },
+      ],
+      "kind": "mutation",
+    },
+    "deprecated": true,
+    "path": "mutations/legacyCreateOrder.mdx",
+    "title": "Legacy Create Order",
+  },
+  {
+    "_graphql": {
+      "deprecated": undefined,
+      "items": [
+        {
+          "kind": "subscription",
+          "name": "orderUpdated",
+          "type": "operation",
+        },
+      ],
+      "kind": "subscription",
+    },
+    "deprecated": undefined,
+    "path": "subscriptions/orderUpdated.mdx",
+    "title": "Order Updated",
+  },
+]
+`;

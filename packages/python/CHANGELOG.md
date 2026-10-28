@@ -1,0 +1,218 @@
+## fumadocs-python@1.0.5
+
+### Bring your own highlighter
+
+Shiki stays the default, and isn't loaded when you highlight code with another highlighter.
+
+- `fumadocs-core/highlight` exports a `Highlighter` interface, created with `createHighlights()` from `fumadocs-core/highlight/highlights` (`@pierre/highlights`) or `createShikiHighlighter()` from `fumadocs-core/highlight/shiki`, `override()` creates one with other options.
+- `rehypeCodeFromHighlighter` from `fumadocs-core/mdx-plugins/rehype-code.core` highlights code blocks with a highlighter, or a function creating one with the transformers of Fumadocs. `createRehypeCode` is deprecated, Sätteri has `rehypeCodeFromHighlighter` in `@fumadocs/satteri/rehype-code`. Pass `transformerTwoslash()` in its `transformers` option to analyze Twoslash blocks in batches.
+- `createServerCodeBlock()` and `createDynamicCodeBlock()` in Fumadocs UI create code blocks from a highlighter. Dynamic code blocks are highlighted on the server too.
+- `toJsx()` from `fumadocs-core/utils/hast-to-jsx` converts hast into React elements like `toJsxRuntime()` of `hast-util-to-jsx-runtime`, MDX nodes through an `evaluator`, over 10x faster on highlighted code, whose spans render as one HTML string. Every Fumadocs renderer uses it, `hast-util-to-jsx-runtime` is no longer a dependency.
+- Twoslash loads the languages of code blocks in popups before highlighting, an unknown language there no longer fails the code block.
+- OpenAPI Standalone highlights code blocks with Highlights, in its server-rendered pages too.
+- The page factories of OpenAPI, GraphQL and AsyncAPI, type tables, `createPython()`, `createPythonComponents()`, `localHtml()` and the shadcn `createSnippet()` take a `highlighter`.
+- Deprecated `shiki` and `shikiOptions` of the API pages and `shiki` of type tables, pass a `highlighter` instead.
+- Integrations require `fumadocs-core` 16.17.8, the API pages and shadcn also require `fumadocs-ui` 16.17.8.
+
+## fumadocs-python@1.0.4
+
+### Markdown and search records from the authored source
+
+`remarkLLMs()` and `remarkStructure()` of `fumadocs-core` slice their Markdown from the authored source like Sätteri, instead of stringifying the syntax tree. It is much faster, Markdown is no longer escaped or reformatted, and local images keep their addresses. Re-sync your search indexes to pick up the new records.
+
+- Plugins record the Markdown of content they replace with `replaceSource()` or `embedSource()` from `fumadocs-core/mdx-plugins/stringifier`, in place of `data._stringify`, and add search records with `data.structuredData`. Nodes they insert otherwise are left out. A `namespace` limits an edit to the stringifiers of that namespace, like `search` for search records.
+- Search records are always Markdown, also in Sätteri. `filterElement` replaces `stringify.filterElement`, it chooses the JSX elements kept as HTML tags (`File`, `TypeTable`, `Callout` and `Card` by default) that search dialogs render as components. Other elements and links are replaced by their content, images are removed, and an element on one line is recorded like a paragraph.
+- Removed `defaultStringifier()` (use `createStringifier()`), `StringifyOptions`, `allowedMdxAttributes`, `filterMdxAttributes`, `placeholder()` (use `mdxAsPlaceholder`), and the `stringify` and `mdast-util-to-markdown` options of both plugins.
+- Included content goes through the plugins like the document's own, Sätteri includes `.md` files as Markdown.
+- `<auto-files>` shows its files in a code block, `auto-type-table` its props in a Markdown table, created by `typeTableToMarkdown()` from `fumadocs-typescript`.
+- `remarkShow()` and `fileGenerator()` of `fumadocs-docgen` record their Markdown, generators receive the `file` to do the same.
+- Records of `fumadocs-obsidian` resolve wikilinks, and leave comments, block IDs, callout markers and embeds out. Comments are removed before parsing, so they no longer split a paragraph.
+- Pages of `fumadocs-python` compile from their MDX, so they have Markdown and search records.
+- `fumadocs-mdx`, `fumadocs-docgen` and `fumadocs-obsidian` require `fumadocs-core` 16.17.0.
+
+Fix [#3662](https://github.com/fuma-nama/fumadocs/issues/3662)
+
+## fumadocs-python@1.0.3
+
+### Mark packages side-effect free
+
+All packages now declare `sideEffects` in `package.json`, so bundlers can tree-shake unused modules. Packages shipping stylesheets list them as side effects to keep CSS imports.
+
+## fumadocs-python@1.0.2
+
+### Replace `cnfast` with `cn`
+
+Internal refactor only.
+
+## fumadocs-python@1.0.1
+
+### `groupBy` option
+
+Generated pages are grouped in a directory named after the root module. Set `groupBy: 'none'` to place them at the root of the source instead, the root module becomes `index.mdx`:
+
+```ts
+const python = createPython({
+  file: './httpx.json',
+  groupBy: 'none',
+});
+```
+
+`convert()` accepts the same option.
+
+## fumadocs-python@1.0.0
+
+### Runtime content source
+
+`createPython()` serves the JSON generated by `fumapy-generate` directly, without generating MDX files:
+
+```ts
+import { dynamicLoader } from 'fumadocs-core/source';
+import { createPython } from 'fumadocs-python';
+
+const python = createPython({
+  file: './httpx.json',
+});
+
+const pythonLoader = dynamicLoader(python.dynamicSource(), {
+  baseUrl: '/docs',
+});
+```
+
+Pages are compiled in memory with `page.data.load()`, `render()` includes the default MDX components of Fumadocs UI and `fumadocs-python/components`. Links between modules and classes are resolved from the loader the source is attached to, and `loaderPlugin()` badges generated pages in the page tree.
+
+`convert()` shares the same page builder. `write()` takes the output directory directly, and keeps the package name in file paths:
+
+```ts
+await write(convert(content, { baseUrl: '/docs' }), 'content/docs');
+```
+
+## fumadocs-python@0.1.1
+
+### Migrate from `js-yaml` to `yaml`
+
+## fumadocs-python@0.1.0
+
+### Default to Base UI
+
+Internal packages & templates now use Base UI rather than Radix UI.
+
+# fumadocs-python
+
+## 0.0.11
+
+### Patch Changes
+
+- 2d8f596: fix `npm pack` skipping nested `node_modules`
+- Updated dependencies [2d8f596]
+  - fumadocs-ui@16.7.14
+  - fumadocs-core@16.7.14
+
+## 0.0.10
+
+### Patch Changes
+
+- 690ddb9: bundle more deps
+- Updated dependencies [690ddb9]
+  - fumadocs-ui@16.7.13
+  - fumadocs-core@16.7.13
+
+## 0.0.9
+
+### Patch Changes
+
+- 5453502: use Shiki.js v4
+- Updated dependencies [5453502]
+  - fumadocs-ui@16.6.8
+  - fumadocs-core@16.6.8
+
+## 0.0.8
+
+### Patch Changes
+
+- c22f6ee: bump tsdown
+- Updated dependencies [c22f6ee]
+  - fumadocs-ui@16.5.2
+  - fumadocs-core@16.5.2
+
+## 0.0.7
+
+### Patch Changes
+
+- b16a32f: Switch to tsdown for bundling
+- Updated dependencies [590d36a]
+- Updated dependencies [98d38ff]
+- Updated dependencies [446631d]
+- Updated dependencies [b16a32f]
+  - fumadocs-core@16.4.2
+  - fumadocs-ui@16.4.2
+
+## 0.0.6
+
+### Patch Changes
+
+- 5210f18: Support Fumadocs 16 in `peerDependencies`.
+- Updated dependencies [1494340]
+- Updated dependencies [230c6bf]
+- Updated dependencies [851897c]
+- Updated dependencies [de0ce6d]
+- Updated dependencies [4049ccc]
+- Updated dependencies [0ed0ca6]
+- Updated dependencies [429c41a]
+- Updated dependencies [5210f18]
+- Updated dependencies [cbc93e9]
+- Updated dependencies [42f09c3]
+- Updated dependencies [55afd8a]
+- Updated dependencies [5966e23]
+  - fumadocs-ui@16.0.0
+  - fumadocs-core@16.0.0
+
+## 0.0.5
+
+### Patch Changes
+
+- a3a14e7: Bump deps
+- Updated dependencies [a3a14e7]
+- Updated dependencies [7b0d839]
+  - fumadocs-core@15.8.3
+  - fumadocs-ui@15.8.3
+
+## 0.0.4
+
+### Patch Changes
+
+- 73681e1: Force dependency versions
+- Updated dependencies [dc6d8a0]
+  - fumadocs-ui@15.7.6
+  - fumadocs-core@15.7.6
+
+## 0.0.3
+
+### Patch Changes
+
+- 1b7bc4b: Add `@types/react` to optional peer dependency to avoid version conflict in monorepos
+- Updated dependencies [b675728]
+- Updated dependencies [7a45921]
+- Updated dependencies [1b7bc4b]
+- Updated dependencies [82fc4c8]
+  - fumadocs-ui@15.5.2
+  - fumadocs-core@15.5.2
+
+## 0.0.2
+
+### Patch Changes
+
+- b0fa6ac: Fix: Add missing dependency for `griffe_typingdoc`
+- Updated dependencies [3372792]
+  - fumadocs-core@15.3.1
+  - fumadocs-ui@15.3.1
+
+## 0.0.1
+
+### Patch Changes
+
+- 3eef0bd: Initial release
+- Updated dependencies [d4d1ba7]
+- Updated dependencies [4e62b41]
+- Updated dependencies [07cd690]
+  - fumadocs-ui@15.2.11
+  - fumadocs-core@15.2.11

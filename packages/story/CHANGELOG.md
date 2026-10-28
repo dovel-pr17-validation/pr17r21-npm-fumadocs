@@ -1,0 +1,305 @@
+## @fumadocs/story@1.5.2
+
+### Faster story controls in dev servers
+
+Story files requested together share one TypeScript program, and Vite environments share their results. A cold start with 300 story files takes 4s instead of 30s, without blocking the Vite dev server.
+
+Fix [#3742](https://github.com/fuma-nama/fumadocs/issues/3742)
+
+### TypeScript 7.1
+
+Twoslash, type tables and story controls run on the stable API of TypeScript 7.1 (`typescript@7.1.0-beta`), with code loaded as in-memory files.
+
+- Twoslash no longer writes code blocks to the `.twoslash` directory, you can remove it from `.gitignore`.
+- Twoslash completions work in the global scope, relative paths in compiler options (like `paths`) resolve from `cwd`.
+- No `tsconfig.fumadocs-typescript.json` or `tsconfig.fumadocs-story.json` is generated.
+- Type tables are 2.4x faster on large API references, each from a program of its file and the files it imports.
+- The `transform` option of type tables gets the checker of TypeScript 7.1, `typeToString()` takes `TypeFormatFlags`.
+
+## @fumadocs/story@1.5.0
+
+### Redesigned story controls
+
+- Props are edited in rows like the OpenAPI playground, nested objects and arrays open in a panel with breadcrumbs.
+- Reset the props to the defaults of the variant.
+- `fixed` values hide their controls with the Vite plugin and Turbopack loader too.
+- Switching back to a variant restores its default values.
+- `getDefaultValue()` leaves optional properties unset, `typeToString()` prints enums as their members.
+- Updated translation keys of the controls, see `@fumadocs/language` for the new ones.
+
+### Story frames
+
+- New `frame` option of `defineStory()`, renders components filling the viewport (e.g. layouts) in an iframe, scaled to fit the panel. Its `Container` wraps the frame, like a window.
+- `story.Frame` renders the component on the frame page, with the arguments from the story panel.
+- Story components can be any component type, like lazy ones that only the frame page loads.
+- `useStoryFrame()` connects your own panel to the frame.
+
+## @fumadocs/story@1.4.0
+
+### Shared components of API pages
+
+#### Default page components
+
+`createOpenAPIRenderer()`, `createAsyncAPIRenderer()` and `createGraphQLRenderer()` fill the `Markdown`, `CodeBlock` and `Heading` components you didn't pass, rendering Markdown through Remark and code blocks through Shiki:
+
+```tsx
+createOpenAPIRenderer({
+  components: { SchemaUI, Operation },
+});
+```
+
+`shiki` defaults to the full bundle, `createOpenAPIBaseRenderer()` takes the factory you pass instead and leaves the bundle out.
+
+#### Installable UI
+
+The UI an API page renders through is now part of the installation, instead of being imported from the package:
+
+| Component                                                                                   | Installed at                               |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `Select`, `Input`                                                                           | `components/ui`, reusing the project's own |
+| `Accordion`, `Collapsible`, `Dialog`, `Popover`, `Spinner`, `SelectTabs`, playground inputs | `components/api/ui`                        |
+| anchor IDs of deep-linkable sections                                                        | `components/api/ui/auto-anchor`            |
+
+`Select` and `Input` follow the Shadcn UI API, so a project that already has them keeps its own. `@fumadocs/story` no longer ships a second copy of either.
+
+`labelVariants` moved to the installed `label` component, leaving the input a plain Shadcn-compatible primitive.
+
+The integrations share one implementation of these internally, instead of each keeping a copy: the selected server and its variables, the state of an async request, the coloured label of methods and kinds, and the plain-object check of both schema layers.
+
+The request pipeline of the playground stays in the package too, so an installed playground drives it instead of copying it: `encodeRequestData()`, `resolveMediaAdapter()`, `isMediaTypeSupported()` and the request data types come from `fumadocs-openapi/requests`, and `createBrowserFetcher()` with `usePlaygroundAuth()` from `fumadocs-openapi/playground`.
+
+### Headless stories
+
+#### Replace the UI of stories
+
+The control panel is no longer fixed, `defineStoryFactory()` takes your own:
+
+```tsx title="lib/story.tsx"
+import { defineStoryFactory } from '@fumadocs/story/vite/client';
+import { WithControl } from '@/components/story';
+
+export const { defineStory } = defineStoryFactory({ WithControl });
+```
+
+Install the built-in one and edit it:
+
+```npm
+npx @fumadocs/cli add fumadocs/story/controls
+```
+
+Or build your own on `@fumadocs/story`: `<StoryProvider />` holds the selected variant and the form engine, `useStory()` exposes the presets and `useStoryArgs()` the arguments of the rendered component.
+
+The entry ships a stubbed build under the `browser` condition, so client components can import them without pulling the story factory's Node dependencies. `@fumadocs/story/type-tree` does the same: `collapse()` is stubbed under the `browser` condition, so the installed controls import the sampler, stringifier and validator from it.
+
+See [Headless](https://fumadocs.dev/docs/integrations/story/headless).
+
+#### Fix the initial branch of union controls
+
+The control of a union prop validated the field against the index of each branch, so it picked an arbitrary one. It now validates against the current value, falling back to the first branch.
+
+`validate()` from `@fumadocs/story/type-tree` also rejected `null` for `null` nodes, it compared against the string `'null'`.
+
+## @fumadocs/story@1.3.1
+
+### Mark packages side-effect free
+
+All packages now declare `sideEffects` in `package.json`, so bundlers can tree-shake unused modules. Packages shipping stylesheets list them as side effects to keep CSS imports.
+
+## @fumadocs/story@1.3.0
+
+### Replace `cnfast` with `cn`
+
+Internal refactor only.
+
+### Generate controls with the native TypeScript compiler
+
+`@fumadocs/story` no longer depends on ts-morph. Story controls are generated with the TypeScript 7 native compiler (`tsgo`), bundled as a dependency, independent of the TypeScript version of your project.
+
+Transforming a story file is about 5x faster (first file 300 ms → 30 ms, edits 20 ms → 5 ms) and uses a fraction of the memory, which mostly matters in dev where every edit regenerates controls.
+
+**Behavior changes**
+
+- Custom handlers of `@fumadocs/story/type-tree` receive TypeScript 7 API objects (`Type`, `Node`, and a `Project` exposing `project.checker`) instead of ts-morph wrappers.
+- Properties of mapped types (e.g. `Pick<Props, ...>`) and members of string literal unions may appear in a different order in the generated controls, following the native compiler.
+
+## @fumadocs/story@1.2.0
+
+### Default to Base UI
+
+Internal packages & templates now use Base UI rather than Radix UI.
+
+## @fumadocs/story@1.1.2
+
+### Migrate to `cnfast`
+
+Drop `tailwind-merge`.
+
+# @fumadocs/story
+
+## 1.1.1
+
+### Patch Changes
+
+- 5017289: Use stable `fuma-translate`
+- Updated dependencies [5017289]
+- Updated dependencies [7a77722]
+  - fumadocs-ui@16.10.1
+  - fumadocs-core@16.10.1
+
+## 1.1.0
+
+### Minor Changes
+
+- 779efff: **Introduce new translations API**
+
+  It is now powered by `fuma-translate`. Be careful: while the API surface is same, some translation keys are changed, unused labels will be ignored.
+
+### Patch Changes
+
+- Updated dependencies [9b9545f]
+- Updated dependencies [0cc1fac]
+- Updated dependencies [779efff]
+  - fumadocs-core@16.10.0
+  - fumadocs-ui@16.10.0
+
+## 1.0.2
+
+### Patch Changes
+
+- 4f22826: Improve micro-interaction
+
+## 1.0.1
+
+### Patch Changes
+
+- c800347: Support Webpack/Turbopack plugin
+- Updated dependencies [5d579bd]
+- Updated dependencies [84ce691]
+- Updated dependencies [5836093]
+  - fumadocs-core@16.9.2
+  - fumadocs-ui@16.9.2
+
+## 1.0.0
+
+### Major Changes
+
+- 5c5d319: New Vite plugin for non-RSC environment
+
+## 0.1.0
+
+### Minor Changes
+
+- 214d5b0: Introduce new translations API
+
+### Patch Changes
+
+- Updated dependencies [818ed21]
+- Updated dependencies [214d5b0]
+- Updated dependencies [3b66725]
+  - fumadocs-core@16.9.0
+  - fumadocs-ui@16.9.0
+
+## 0.0.14
+
+### Patch Changes
+
+- 64d6b10: Bump `ts-morph`
+
+## 0.0.13
+
+### Patch Changes
+
+- 690ddb9: bundle more deps
+- Updated dependencies [690ddb9]
+  - fumadocs-ui@16.7.13
+  - @fumari/stf@1.0.5
+
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies [f15e322]
+  - @fumari/stf@1.0.4
+
+## 0.0.11
+
+### Patch Changes
+
+- 5453502: use Shiki.js v4
+- Updated dependencies [5453502]
+  - fumadocs-ui@16.6.8
+  - @fumari/stf@1.0.3
+
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [38bd784]
+- Updated dependencies [bd8c33a]
+  - fumadocs-ui@16.6.6
+  - @fumari/stf@1.0.2
+
+## 0.0.9
+
+### Patch Changes
+
+- 21e60c3: support cleaning namespace information
+- Updated dependencies [21e60c3]
+  - @fumari/stf@1.0.1
+
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [fe37b9f]
+- Updated dependencies [fe37b9f]
+  - @fumari/stf@1.0.0
+
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [7872e27]
+  - @fumari/stf@0.0.3
+  - fumadocs-ui@16.5.4
+
+## 0.0.6
+
+### Patch Changes
+
+- c22f6ee: bump tsdown
+- Updated dependencies [c22f6ee]
+  - fumadocs-ui@16.5.2
+  - @fumari/stf@0.0.2
+
+## 0.0.5
+
+### Patch Changes
+
+- 44a24a4: Support using the client instance for rendering
+
+## 0.0.4
+
+### Patch Changes
+
+- 5eeb16c: Support Client API for non-RSC environment
+
+## 0.0.3
+
+### Patch Changes
+
+- 9e62a4d: support fixed values for props
+
+## 0.0.2
+
+### Patch Changes
+
+- 89af9e0: support variants
+
+## 0.0.1
+
+### Patch Changes
+
+- 6ac37c4: beta release
+- Updated dependencies [6ac37c4]
+  - @fumari/stf@0.0.1

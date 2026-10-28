@@ -1,0 +1,439 @@
+## fumadocs-twoslash@4.0.4
+
+### Bring your own highlighter
+
+Shiki stays the default, and isn't loaded when you highlight code with another highlighter.
+
+- `fumadocs-core/highlight` exports a `Highlighter` interface, created with `createHighlights()` from `fumadocs-core/highlight/highlights` (`@pierre/highlights`) or `createShikiHighlighter()` from `fumadocs-core/highlight/shiki`, `override()` creates one with other options.
+- `rehypeCodeFromHighlighter` from `fumadocs-core/mdx-plugins/rehype-code.core` highlights code blocks with a highlighter, or a function creating one with the transformers of Fumadocs. `createRehypeCode` is deprecated, Sätteri has `rehypeCodeFromHighlighter` in `@fumadocs/satteri/rehype-code`. Pass `transformerTwoslash()` in its `transformers` option to analyze Twoslash blocks in batches.
+- `createServerCodeBlock()` and `createDynamicCodeBlock()` in Fumadocs UI create code blocks from a highlighter. Dynamic code blocks are highlighted on the server too.
+- `toJsx()` from `fumadocs-core/utils/hast-to-jsx` converts hast into React elements like `toJsxRuntime()` of `hast-util-to-jsx-runtime`, MDX nodes through an `evaluator`, over 10x faster on highlighted code, whose spans render as one HTML string. Every Fumadocs renderer uses it, `hast-util-to-jsx-runtime` is no longer a dependency.
+- Twoslash loads the languages of code blocks in popups before highlighting, an unknown language there no longer fails the code block.
+- OpenAPI Standalone highlights code blocks with Highlights, in its server-rendered pages too.
+- The page factories of OpenAPI, GraphQL and AsyncAPI, type tables, `createPython()`, `createPythonComponents()`, `localHtml()` and the shadcn `createSnippet()` take a `highlighter`.
+- Deprecated `shiki` and `shikiOptions` of the API pages and `shiki` of type tables, pass a `highlighter` instead.
+- Integrations require `fumadocs-core` 16.17.8, the API pages and shadcn also require `fumadocs-ui` 16.17.8.
+
+### TypeScript 7.1
+
+Twoslash, type tables and story controls run on the stable API of TypeScript 7.1 (`typescript@7.1.0-beta`), with code loaded as in-memory files.
+
+- Twoslash no longer writes code blocks to the `.twoslash` directory, you can remove it from `.gitignore`.
+- Twoslash completions work in the global scope, relative paths in compiler options (like `paths`) resolve from `cwd`.
+- No `tsconfig.fumadocs-typescript.json` or `tsconfig.fumadocs-story.json` is generated.
+- Type tables are 2.4x faster on large API references, each from a program of its file and the files it imports.
+- The `transform` option of type tables gets the checker of TypeScript 7.1, `typeToString()` takes `TypeFormatFlags`.
+
+## fumadocs-twoslash@4.0.3
+
+### Hover signatures of repeated calls
+
+Hovering a call shows that call's own resolved signature again. Repeated calls of the same function, such as two `z.enum([...])` calls with different values, all showed the first call's signature, since the hover cache did not tell call sites apart.
+
+Fix [#3727](https://github.com/fuma-nama/fumadocs/issues/3727)
+
+## fumadocs-twoslash@4.0.2
+
+### Truncate long types in hovers, faster analysis
+
+- Types longer than 500 characters in hover popups are truncated by the checker (`... 26 more ...`) instead of printed in full, so pages with large object types compile to much smaller MDX.
+- Code blocks are briefly written to the `.twoslash` directory while being analyzed, instead of going through filesystem callbacks, which makes the analysis about 2x faster. Add `.twoslash` to your `.gitignore`.
+- Identical popups of a code block are highlighted once.
+
+Fix [#3672](https://github.com/fuma-nama/fumadocs/issues/3672)
+
+## fumadocs-twoslash@4.0.1
+
+### Mark packages side-effect free
+
+All packages now declare `sideEffects` in `package.json`, so bundlers can tree-shake unused modules. Packages shipping stylesheets list them as side effects to keep CSS imports.
+
+## fumadocs-twoslash@4.0.0
+
+### Run Twoslash on TypeScript 7
+
+`fumadocs-twoslash` now runs on the native TypeScript 7 compiler (`typescript/unstable/sync`) instead of bundling its own TypeScript 6, so the types in popups come from the same compiler as your project.
+
+Code blocks of documents compiled concurrently are analyzed together in one snapshot of the TypeScript project (requires `fumadocs-core` 16.15.7 for the `_fd_prepare` hook of `rehype-code`), which removes most of the per-block cost of loading the project. Cold builds of the Fumadocs docs take 40% less time in total, with the TypeScript part 3.5x faster.
+
+The Shiki transformer and renderer are now implemented in `fumadocs-twoslash`, `@shikijs/twoslash` and `twoslash` are no longer dependencies (nor `twoslash` a peer of TypeScript 6). The rendered HTML and the transformer options are unchanged, except that `rendererRich` only takes the options that apply to the popups of Fumadocs (`jsdoc`, `processHoverInfo`, `processHoverDocs`, `completionIcons`, `customTagIcons`); the `hast` extensions, `errorRendering`, `queryRendering`, `classExtra` and the custom `renderer` option are removed.
+
+The `twoslashOptions` are simplified to what the native API supports:
+
+- `compilerOptions` takes `tsconfig.json` values (e.g. `moduleResolution: 'bundler'`) instead of enum values from the `typescript` package.
+- `cwd` replaces `vfsRoot`.
+- `tsModule`, `tsLibDirectory`, `fsMap`, `cache`, `customTransformers` and the per-call `positionQueries`, `positionCompletions`, `positionHighlights` are removed.
+- `@showEmit` is not supported, TypeScript 7 has no emit API yet.
+
+```ts
+transformerTwoslash({
+  twoslashOptions: {
+    compilerOptions: {
+      types: ['node'],
+    },
+  },
+});
+```
+
+## fumadocs-twoslash@3.3.1
+
+### Replace `cnfast` with `cn`
+
+Internal refactor only.
+
+### Bundle TypeScript for Twoslash
+
+`fumadocs-twoslash` now depends on its own TypeScript 6 and passes it to Twoslash, so the transformer keeps working in projects on TypeScript 7 (whose package no longer provides the compiler API Twoslash requires). Previously, every Twoslash code block that was not already in the types cache failed with `Cannot read properties of undefined (reading 'readFile')`.
+
+## fumadocs-twoslash@3.3.0
+
+### Default to Base UI
+
+Internal packages & templates now use Base UI rather than Radix UI.
+
+## fumadocs-twoslash@3.2.1
+
+### Migrate to `cnfast`
+
+Drop `tailwind-merge`.
+
+# fumadocs-twoslash
+
+## 3.2.0
+
+### Minor Changes
+
+- 9cf33e9: Support lazy loading with `rehype-code`
+
+### Patch Changes
+
+- Updated dependencies [f2c6e59]
+- Updated dependencies [9cf33e9]
+- Updated dependencies [9cf33e9]
+  - fumadocs-ui@16.7.16
+  - fumadocs-core@16.7.16
+
+## 3.1.17
+
+### Patch Changes
+
+- 2d8f596: fix `npm pack` skipping nested `node_modules`
+- Updated dependencies [2d8f596]
+  - fumadocs-ui@16.7.14
+
+## 3.1.16
+
+### Patch Changes
+
+- 690ddb9: bundle more deps
+- Updated dependencies [690ddb9]
+  - fumadocs-ui@16.7.13
+
+## 3.1.15
+
+### Patch Changes
+
+- da50bc3: Force default options for TypeScript 6
+
+## 3.1.14
+
+### Patch Changes
+
+- 5453502: use Shiki.js v4
+- Updated dependencies [5453502]
+  - fumadocs-ui@16.6.8
+
+## 3.1.13
+
+### Patch Changes
+
+- c22f6ee: bump tsdown
+- Updated dependencies [c22f6ee]
+  - fumadocs-ui@16.5.2
+
+## 3.1.12
+
+### Patch Changes
+
+- cdc97e0: Improve experience with Shiki Twoslash
+- Updated dependencies [c804ac6]
+  - fumadocs-ui@16.4.4
+
+## 3.1.11
+
+### Patch Changes
+
+- b16a32f: Switch to tsdown for bundling
+- Updated dependencies [b16a32f]
+  - fumadocs-ui@16.4.2
+
+## 3.1.10
+
+### Patch Changes
+
+- 7c7e984: Fix accessibility: Replace span with button for twoslash hover triggers to resolve critical aria-allowed-attr violations
+- bc97236: bump deps
+- Updated dependencies [c0df2c4]
+- Updated dependencies [117ad86]
+  - fumadocs-ui@16.0.8
+
+## 3.1.9
+
+### Patch Changes
+
+- 5210f18: Support Fumadocs 16 in `peerDependencies`.
+- Updated dependencies [1494340]
+- Updated dependencies [de0ce6d]
+- Updated dependencies [0ed0ca6]
+- Updated dependencies [5210f18]
+- Updated dependencies [42f09c3]
+- Updated dependencies [5966e23]
+  - fumadocs-ui@16.0.0
+
+## 3.1.8
+
+### Patch Changes
+
+- a3a14e7: Bump deps
+- Updated dependencies [a3a14e7]
+- Updated dependencies [7b0d839]
+  - fumadocs-ui@15.8.3
+
+## 3.1.7
+
+### Patch Changes
+
+- a76d244: Fix breaking types change from upstream 3.12.0
+- Updated dependencies [cedc494]
+  - fumadocs-ui@15.7.5
+
+## 3.1.6
+
+### Patch Changes
+
+- 51e6687: Fix popup container styles
+- Updated dependencies [6de6ff3]
+- Updated dependencies [f0b1fee]
+  - fumadocs-ui@15.6.11
+
+## 3.1.5
+
+### Patch Changes
+
+- c6153d4: Improve rendered result
+
+## 3.1.4
+
+### Patch Changes
+
+- 1b7bc4b: Add `@types/react` to optional peer dependency to avoid version conflict in monorepos
+- Updated dependencies [b675728]
+- Updated dependencies [1b7bc4b]
+- Updated dependencies [82fc4c8]
+  - fumadocs-ui@15.5.2
+
+## 3.1.3
+
+### Patch Changes
+
+- 721c927: Lazy load twoslasher
+- 3372792: Support line numbers in codeblock
+- Updated dependencies [3372792]
+  - fumadocs-ui@15.3.1
+
+## 3.1.2
+
+### Patch Changes
+
+- 81fe2c2: Remove the need for placeholder lines
+- Updated dependencies [52b5ad8]
+- Updated dependencies [abce713]
+  - fumadocs-ui@15.3.0
+
+## 3.1.1
+
+### Patch Changes
+
+- 085e39f: Fix inline code issues
+- Updated dependencies [eb18da9]
+- Updated dependencies [085e39f]
+- Updated dependencies [4d50bcf]
+  - fumadocs-ui@15.2.7
+
+## 3.1.0
+
+### Minor Changes
+
+- b49d236: Support `typesCache` option and `fumadocs-twoslash/cache-fs` similar to Vitepress
+
+### Patch Changes
+
+- Updated dependencies [6bc033a]
+  - fumadocs-ui@15.0.14
+
+## 3.0.1
+
+### Patch Changes
+
+- 0f59dfc: Update peer deps
+- Updated dependencies [7608f4e]
+- Updated dependencies [89ff3ae]
+- Updated dependencies [16c8944]
+  - fumadocs-ui@15.0.13
+
+## 3.0.0
+
+### Major Changes
+
+- a89d6e0: Require Fumadocs v15 & Tailwind CSS v4
+
+### Patch Changes
+
+- Updated dependencies [a89d6e0]
+- Updated dependencies [a84f37a]
+- Updated dependencies [f2f9c3d]
+  - fumadocs-ui@15.0.0
+
+## 2.0.3
+
+### Patch Changes
+
+- b9601fb: Update Shiki
+  - fumadocs-ui@14.7.6
+
+## 2.0.2
+
+### Patch Changes
+
+- 9585561: Fix Twoslash popups focus outline
+- 4766292: Support React 19
+- Updated dependencies [010da9e]
+- Updated dependencies [bebb16b]
+- Updated dependencies [9585561]
+- Updated dependencies [4766292]
+  - fumadocs-ui@14.6.0
+
+## 2.0.1
+
+### Patch Changes
+
+- d6d290c: Upgrade Shiki
+  - fumadocs-ui@14.1.0
+
+## 2.0.0
+
+### Major Changes
+
+- 9a10262: **Move Twoslash UI components to `fumadocs-twoslash`**
+
+  **why:** Isolate logic from Fumadocs UI
+
+  **migrate:**
+
+  Before:
+
+  ```ts
+  import "fumadocs-ui/twoslash.css";
+
+  import { Popup } from "fumadocs-ui/twoslash/popup";
+  ```
+
+  After:
+
+  ```ts
+  import "fumadocs-twoslash/twoslash.css";
+
+  import { Popup } from "fumadocs-twoslash/ui";
+  ```
+
+  **Tailwind CSS is now required for Twoslash integration.**
+
+### Patch Changes
+
+- be820c4: Bump deps
+- Updated dependencies [34cf456]
+- Updated dependencies [d9e908e]
+- Updated dependencies [f949520]
+- Updated dependencies [ad47fd8]
+- Updated dependencies [d9e908e]
+- Updated dependencies [367f4c3]
+- Updated dependencies [87063eb]
+- Updated dependencies [64f0653]
+- Updated dependencies [e1ee822]
+- Updated dependencies [d9e908e]
+- Updated dependencies [d9e908e]
+- Updated dependencies [e612f2a]
+- Updated dependencies [3d0369a]
+- Updated dependencies [9a10262]
+- Updated dependencies [d9e908e]
+- Updated dependencies [3d054a8]
+- Updated dependencies [d9e908e]
+- Updated dependencies [be820c4]
+- Updated dependencies [be53a0e]
+  - fumadocs-ui@14.0.0
+
+## 1.1.3
+
+### Patch Changes
+
+- 0c251e5: Bump deps
+- Updated dependencies [0c251e5]
+- Updated dependencies [0c251e5]
+- Updated dependencies [0c251e5]
+  - fumadocs-ui@13.4.2
+
+## 1.1.2
+
+### Patch Changes
+
+- 2cc477f: Fix meta field inherited to child code blocks
+- Updated dependencies [8f5b19e]
+- Updated dependencies [32ca37a]
+- Updated dependencies [9aae448]
+- Updated dependencies [c542561]
+  - fumadocs-ui@13.3.0
+
+## 1.1.1
+
+### Patch Changes
+
+- 6ed95ea: Fix compatibility issues with Fumadocs UI v13
+- Updated dependencies [89190ae]
+- Updated dependencies [b02eebf]
+- Updated dependencies [f868018]
+- Updated dependencies [8aebeab]
+- Updated dependencies [c684c00]
+- Updated dependencies [8aebeab]
+- Updated dependencies [0377bb4]
+- Updated dependencies [e8e6a17]
+- Updated dependencies [c8964d3]
+- Updated dependencies [c901e6b]
+- Updated dependencies [daa7d3c]
+- Updated dependencies [89190ae]
+- Updated dependencies [b02eebf]
+- Updated dependencies [4373231]
+  - fumadocs-ui@13.0.0
+
+## 1.1.0
+
+### Minor Changes
+
+- 5f86faa: Improve multi-line code blocks
+
+## 1.0.3
+
+### Patch Changes
+
+- 8ef2b68: Bump deps
+
+## 1.0.2
+
+### Patch Changes
+
+- 08e4904: Update types
+
+## 1.0.1
+
+### Patch Changes
+
+- c71b7e3: Ignore injected elements when copying code

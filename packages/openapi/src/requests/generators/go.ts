@@ -1,0 +1,51 @@
+import { cookieString, doubleQuote, indent } from '@/requests/string-utils';
+import type { CodeUsageGenerator } from '@/requests/generators';
+import { generateBodyExample } from '@/requests/media/adapter';
+
+export const go: CodeUsageGenerator = {
+  label: 'Go',
+  lang: 'go',
+  generate(data, { mediaAdapters }) {
+    const imports = new Set(['fmt', 'io', 'net/http']);
+    const body = generateBodyExample(data, mediaAdapters, {
+      lang: 'go',
+      addImport: (name) => imports.add(name),
+    });
+    const multipart = data.bodyMediaType === 'multipart/form-data';
+    const s = [
+      `req, _ := http.NewRequest("${data.method.toUpperCase()}", url, ${body ? 'body' : 'nil'})`,
+    ];
+    for (const k in data.header) {
+      s.push(`req.Header.Add(${doubleQuote(k)}, ${doubleQuote(data.header[k].value)})`);
+    }
+
+    const cookie = cookieString(data.cookie);
+    if (cookie) s.push(`req.Header.Add("Cookie", ${doubleQuote(cookie)})`);
+    if (body) {
+      const type = multipart ? 'mp.FormDataContentType()' : doubleQuote(data.bodyMediaType!);
+
+      s.push(`req.Header.Add("Content-Type", ${type})`);
+    }
+
+    s.push(
+      'res, _ := http.DefaultClient.Do(req)',
+      'defer res.Body.Close()',
+      'resBody, _ := io.ReadAll(res.Body)',
+      '',
+      'fmt.Println(res)',
+      'fmt.Println(string(resBody))',
+    );
+
+    // a text body is a single statement, its next lines are inside the string literal
+    return `package main
+
+import (
+${indent(Array.from(imports, (name) => `"${name}"`).join('\n'))}
+)
+
+func main() {
+  url := ${doubleQuote(data.url)}
+${body ? `${multipart ? indent(body) : `  ${body}`}\n` : ''}${indent(s.join('\n'))}
+}`;
+  },
+};

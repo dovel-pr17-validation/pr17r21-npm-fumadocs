@@ -1,0 +1,61 @@
+{
+  "name": "@fumadocs/json-schema",
+  "version": "0.3.5",
+  "description": "JSON Schema toolkit: dereference, merge, sample and stringify schemas",
+  "keywords": [
+    "Fumadocs",
+    "JSON Schema"
+  ],
+  "homepage": "https://fumadocs.dev",
+  "license": "MIT",
+  "author": "Fuma Nama",
+  "repository": "github:fuma-nama/fumadocs",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./bundle": "./dist/bundle.js",
+    "./react": "./dist/react.js",
+    "./react/client": "./dist/react/client.js",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rimraf dist",
+    "dev": "tsdown --watch --clean false",
+    "lint": "oxlint .",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fuma-translate/react": "^1.0.2",
+    "@scalar/json-magic": "^0.16.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "^19.3.0",
+    "json-schema-typed": "^9.0.0",
+    "react": "^19.3.1",
+    "tsconfig": "workspace:*",
+    "tsdown": "0.23.1",
+    "vitest": "^5.0.5"
+  },
+  "peerDependencies": {
+    "json-schema-typed": "*",
+    "react": "^19.2.0"
+  },
+  "peerDependenciesMeta": {
+    "json-schema-typed": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  }
+}

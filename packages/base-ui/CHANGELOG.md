@@ -1,0 +1,1131 @@
+## @fumadocs/base-ui@16.17.8
+
+### Bring your own highlighter
+
+Shiki stays the default, and isn't loaded when you highlight code with another highlighter.
+
+- `fumadocs-core/highlight` exports a `Highlighter` interface, created with `createHighlights()` from `fumadocs-core/highlight/highlights` (`@pierre/highlights`) or `createShikiHighlighter()` from `fumadocs-core/highlight/shiki`, `override()` creates one with other options.
+- `rehypeCodeFromHighlighter` from `fumadocs-core/mdx-plugins/rehype-code.core` highlights code blocks with a highlighter, or a function creating one with the transformers of Fumadocs. `createRehypeCode` is deprecated, Sätteri has `rehypeCodeFromHighlighter` in `@fumadocs/satteri/rehype-code`. Pass `transformerTwoslash()` in its `transformers` option to analyze Twoslash blocks in batches.
+- `createServerCodeBlock()` and `createDynamicCodeBlock()` in Fumadocs UI create code blocks from a highlighter. Dynamic code blocks are highlighted on the server too.
+- `toJsx()` from `fumadocs-core/utils/hast-to-jsx` converts hast into React elements like `toJsxRuntime()` of `hast-util-to-jsx-runtime`, MDX nodes through an `evaluator`, over 10x faster on highlighted code, whose spans render as one HTML string. Every Fumadocs renderer uses it, `hast-util-to-jsx-runtime` is no longer a dependency.
+- Twoslash loads the languages of code blocks in popups before highlighting, an unknown language there no longer fails the code block.
+- OpenAPI Standalone highlights code blocks with Highlights, in its server-rendered pages too.
+- The page factories of OpenAPI, GraphQL and AsyncAPI, type tables, `createPython()`, `createPythonComponents()`, `localHtml()` and the shadcn `createSnippet()` take a `highlighter`.
+- Deprecated `shiki` and `shikiOptions` of the API pages and `shiki` of type tables, pass a `highlighter` instead.
+- Integrations require `fumadocs-core` 16.17.8, the API pages and shadcn also require `fumadocs-ui` 16.17.8.
+
+## @fumadocs/base-ui@16.17.4
+
+### Keyboard-scrollable MDX tables
+
+- Tables of `defaultMdxComponents` are focusable, so keyboard users can scroll wide tables in Safari.
+
+Fix [#3706](https://github.com/fuma-nama/fumadocs/issues/3706)
+
+### Use `prose-sm` and `prose-xs` for small prose
+
+Small prose in TOC items, type tables, API descriptions and AI chat scales its code and headings with the text.
+
+### Spacious: define `--fd-docs-height` for pages
+
+Sticky content of pages, like the example column of API pages, fits the page panel.
+
+## @fumadocs/base-ui@16.17.3
+
+### Lightbox for zoomable images
+
+Zoomable images inside `<Lightbox />` open in one viewer, browse them with arrow keys, swipes or the side buttons.
+
+```tsx
+import { Lightbox } from 'fumadocs-ui/components/image-zoom';
+
+<Lightbox>
+  <MDX components={getMDXComponents()} />
+</Lightbox>;
+```
+
+- The image title is shown as caption, pass `caption` to `<ImageZoom />` for rich content.
+- `rmiz` props don't apply inside `<Lightbox />`.
+- Added translation keys of the image viewer to `@fumadocs/language`.
+
+### Show failed searches in the search dialog
+
+- `<SearchDialog />` accepts the `error` of search hooks, `<SearchDialogList />` shows it above the previous results.
+
+Fix [#3698](https://github.com/fuma-nama/fumadocs/issues/3698)
+
+## @fumadocs/base-ui@16.17.2
+
+### Layout fixes
+
+- Docs Layout: layout tabs with `tabMode: 'top'` no longer cover the page.
+- Glass Layout: sidebar items are not all active with a page tree without `$id`.
+- Glass Layout: icons of layout tabs are sized correctly with the default `tabs` option.
+
+## @fumadocs/base-ui@16.17.0
+
+### Highlight search results with CSS
+
+Search results no longer wrap matches in `<mark>`, `content` is the indexed Markdown. The search dialog highlights matches with the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API), style them with `::highlight(fd-search)`. Custom search UIs can use `useHighlightQuery()` from `fumadocs-core/search/client`.
+
+- `createContentHighlighter()` is deprecated.
+- Removed `contentWithHighlights` from search results, and the `renderHighlights` prop of `<SearchDialogListItem />`.
+- `<SearchDialogListItem />` renders the Markdown of results with the `prose prose-sm` typography.
+
+### Search hooks for each provider
+
+`fumadocs-core/search/client` exports a hook for each search client, like `useFetchSearch()`. They return the props of `<SearchDialog />`:
+
+```tsx
+const search = useFetchSearch({ locale });
+
+<SearchDialog {...search} {...props}>
+  <SearchDialogList />
+</SearchDialog>;
+```
+
+`data` is the last successful search, its `items` have their content parsed into `hastContent`. `error` is set when the last search failed.
+
+- `experimental_useSearch()` creates a search hook from a memoized search function.
+- `useDocsSearch()` is deprecated.
+- `useFlexsearchStatic()` and `useOramaCloudLegacySearch()` are exported from the paths of their clients.
+- `<SearchDialogList />` shows `defaultItems` without results.
+- `useSearchList()` is removed, `useSearch()` returns `getActive()`, `setActive()` and `subscribeActive()` for the active item.
+- `<SearchDialogListItem />` renders a `div` instead of a `button`, table rows render their cells only.
+- `renderMarkdown` of `<SearchDialogListItem />` renders `content` instead of `hastContent`. Without it, the string content of custom items is shown as text.
+- The templates of Fumadocs CLI and Create Fumadocs App use the new hooks.
+
+### Index tables by row
+
+Structured data records each table row as a Markdown table of its header row and itself, instead of a record per cell. Type tables from `auto-type-table` record a row for each prop instead of the `TypeTable` element. Re-sync your search indexes to pick them up.
+
+- `remarkStructure()` defaults `types` to `table` instead of `tableCell`.
+- `tableRowToStructuredData()` from `fumadocs-core/search` creates the structured data of a table row, `typeTableToStructuredData()` from `fumadocs-typescript` of a type table.
+- Search hooks group the rows of a table into a `table` item, `<SearchDialogList />` renders it with `Table`, `<SearchDialogListTable />` by default.
+- Algolia and Orama Cloud link to the anchor of every record, like the props of type tables.
+- Orama Cloud searches `title`, `section` and `content` by default, set `params.properties` to search other fields.
+- `remarkStructure()` of Sätteri records the `data.structuredData` of nodes in place of the nodes.
+
+### Show page tree roots on fallback pages
+
+On pages from the fallback page tree, layout tabs list the root folders of the main page tree again.
+
+## @fumadocs/base-ui@16.16.2
+
+### Focus inside the AI chat panel when opened
+
+The `aiChat` panel turns visible as soon as it opens, so its input can take focus right away. It still hides only after the closing transition.
+
+### Collapse the sidebar with `Ctrl + B`
+
+On desktop, press `Ctrl + B` (`⌘ + B` on macOS) to collapse or expand the sidebar, in layouts that support collapsing it. Like the theme hotkey, it is ignored while typing in an editable element, or when a dialog is opened.
+
+### Fix Spacious layout on Firefox mobile
+
+When scrolling in Firefox, the top edge of the page panel moved away from the navbar and table of contents bar, ending up in the middle of the page or off screen. It now stays below the bars, without relying on CSS anchor positioning.
+
+### Ignore unknown values in tab groups
+
+Tabs with a `groupId`, including code block tabs with `tab-group`, applied persisted or shared values even when none of their tabs matched, for example after renaming a tab, or when tabs in the same group have different items. They then showed no content until a tab was clicked. Such values are now ignored.
+
+## @fumadocs/base-ui@16.16.1
+
+### Improve Spacious layout on mobile
+
+The page sits in an inset panel on mobile too, while the navbar and table of contents bar stay on the outer surface.
+
+- The sidebar drawer floats as an inset panel, like the AI chat.
+- The navbar and table of contents bar stay below the `<Banner />`.
+- Like the Docs layout, `--fd-docs-row-3` is the bottom of these bars, so API pages scroll their content below them.
+
+## @fumadocs/base-ui@16.16.0
+
+### Place AI chat in layouts
+
+Docs, Notebook, and Glass layouts accept an `aiChat` option, pass your chat as `aiChat.panel` and the layout places it beside the page on wide viewports, and floats it over the page on smaller ones.
+
+Your chat component no longer needs layout-specific positioning, like targeting `#nd-docs-layout` or overriding `--fd-right-width`.
+
+The `ai` feature of Fumadocs CLI now renders your docs layout from a client component at `ai/layout.tsx` in your components directory, which passes the installed chat to `aiChat`. It supports Docs, Notebook, Glass, and Spacious layouts, and only adds a floating trigger to the layouts without their own.
+
+### Export Glass layout as `DocsLayout`
+
+Like other docs layouts, `fumadocs-ui/layouts/glass` exports `DocsLayout`, `DocsLayoutProps`, and `DocsSlots`. The `GlassLayout` names remain as aliases.
+
+### Introduce Spacious Layout
+
+A less compact version of Docs Layout, the page sits in an inset panel beside the sidebar, with page-level actions at the top of the panel.
+
+- Use it from `fumadocs-ui/layouts/spacious` and `fumadocs-ui/layouts/spacious/page`, and import the styles from `fumadocs-ui/css/generated/spacious.css`.
+- Pass `aiChat.panel` to render your AI chat in the layout, docked beside the page on wide screens and floating over it on smaller ones.
+- Customize it with `npx @fumadocs/cli customize`, only available for Base UI.
+
+The Chinese presets of `@fumadocs/language` include translations for its new strings.
+
+## @fumadocs/base-ui@16.15.17
+
+### Apply the Vite base path to the "View as Markdown" link
+
+`<ViewOptionsPopover />` linked to `markdownUrl` without the Vite `base`, so sites served under a base path got a 404. It now prefixes the URL like `<MarkdownCopyButton />` does.
+
+Fix [#3620](https://github.com/fuma-nama/fumadocs/issues/3620)
+
+## @fumadocs/base-ui@16.15.16
+
+### Don't copy failed Markdown responses
+
+`<MarkdownCopyButton />` copied the body of error responses, like a 404 page, and kept it cached until a full reload. Failed responses are rejected, and only successful ones are cached.
+
+Fix [#3612](https://github.com/fuma-nama/fumadocs/issues/3612)
+
+## @fumadocs/base-ui@16.15.14
+
+### Announce copy confirmation to screen readers
+
+Copy buttons are polite live regions whose label switches to "Copied" after a successful copy, so screen readers announce it. The code block's copy button no longer reports success when the clipboard write fails.
+
+### Expose the search dialog as a combobox
+
+The search input is now a `combobox` that controls a `listbox` of `option` results and reports the highlighted result through `aria-activedescendant`, so screen readers announce results as you move through them. Hidden result buttons are removed from the tab order, and the empty state is announced as a status message.
+
+### Remove hidden sidebar controls from the tab order
+
+The collapsed sidebar and its floating pill are now `inert` while hidden, and toggling the sidebar moves focus to the trigger that becomes visible.
+
+### Add `block` TOC style
+
+A TOC style without the track line: headings are indented by depth, and a block slides behind the active headings.
+
+```tsx
+<DocsPage tableOfContent={{ style: 'block' }} />
+```
+
+## @fumadocs/base-ui@16.15.13
+
+### Keep the collapsed sidebar's controls off the page title
+
+With the sidebar collapsed, the docs layout floats the reopen and search buttons in a fixed pill at the top-left of the page and starts the article at the same row.
+Wherever the article is not centered with room to spare, every viewport below about 1280px, the pill covered the page title.
+The article now leaves room for the pill while the sidebar is collapsed.
+
+### AI page actions name the page by the URL the reader is on
+
+The "Open in ..." prompts built the page URL from the router pathname and the origin.
+Next's `usePathname()` omits a configured `basePath`, so a site mounted under one sent assistants a URL that did not exist.
+
+The prompt now uses the reader's current URL, without query and hash, and falls back to the pathname during server rendering.
+A new `pageUrl` prop on `ViewOptionsPopover` sets a canonical URL instead.
+
+### Subscribe with `useSyncExternalStore`
+
+#### Optimize Performance
+
+Use `useSyncExternalStore()` from React.
+
+## @fumadocs/base-ui@16.15.11
+
+### Shadcn UI compatible primitives
+
+The primitives in `fumadocs-ui/components/ui/*` now follow the API of Shadcn UI, so components installed by the CLI can use the ones you already have.
+
+`buttonVariants` accepts the `default` variant of Shadcn UI:
+
+```tsx
+buttonVariants({ variant: 'default', size: 'sm' });
+```
+
+`primary` and the `color` alias still work.
+
+`fumadocs-ui/components/ui/scroll-area` is removed, the sidebars render the scroll area primitives directly.
+
+### Mark packages side-effect free
+
+All packages now declare `sideEffects` in `package.json`, so bundlers can tree-shake unused modules. Packages shipping stylesheets list them as side effects to keep CSS imports.
+
+## @fumadocs/base-ui@16.15.10
+
+### Fix language switching with hidden locale prefixes
+
+Root Provider's `i18n` option now accepts `defaultLanguage` and `hideLocale`. The language switcher uses these options instead of guessing from the current URL, so switching from `/zh/docs` to the default language `en` with `hideLocale: 'default-locale'` navigates to `/docs`.
+
+`i18nProvider()` and `defineI18nUI()` pass these options from your i18n config automatically.
+
+## @fumadocs/base-ui@16.15.8
+
+### Fix Tabs reverting to the hash target after a tab click
+
+The hash-to-tab logic of `Tabs` ran on every render instead of only on mount and `hashchange`, because the effect depended on a `useEffectEvent` callback, which is not referentially stable.
+
+## @fumadocs/base-ui@16.15.6
+
+### Replace `cnfast` with `cn`
+
+Internal refactor only.
+
+## @fumadocs/base-ui@16.15.5
+
+### Root types: version your docs with `root: "<type>"`
+
+`root` in `meta.json` now accepts a string, the type of root folder. Root folders of the same type under the same parent are interchangeable, which is how you keep multiple versions of the same docs in one site:
+
+```json tab="content/docs/v1/meta.json"
+{
+  "title": "1.0.0",
+  "root": "version"
+}
+```
+
+```json tab="content/docs/v2/meta.json"
+{
+  "title": "2.0.0",
+  "root": "version"
+}
+```
+
+The sidebar only shows the opened version, and docs layouts render a dropdown to switch between them. Switching keeps your place: it navigates to the same page in the other version (`/docs/v1/guide` to `/docs/v2/guide`), or its index page when the page doesn't exist there.
+
+`root: true` is simply the default type, displayed as tabs. See [Versioning](https://fumadocs.dev/docs/versioning) for the guide and [Root Type](https://fumadocs.dev/docs/page-conventions#root-type) for the reference.
+
+### Tabs are grouped by root folder
+
+Layout tabs are now grouped by the root folders on the current page's path, with one dropdown per group. This changes a few behaviours of the existing `root: true` tabs:
+
+- Clicking a tab navigates to the same page in the target folder when it exists, otherwise its index page as before.
+- With nested root folders, each level gets its own dropdown instead of one flat list. Tab lists (`tabMode: 'top'` on Docs layout, `tabMode: 'navbar'` on Notebook layout) show the innermost `root: true` group, and are hidden on pages outside of any root folder.
+- `getLayoutTabs()` includes typed root folders too, so a custom `transform` also decorates them. Custom `tabs` entries bound to a page tree folder are grouped the same way, other entries are appended to the `root: true` dropdown.
+- `tabs={false}` disables the dropdowns of typed root folders as well.
+
+### `findProjection()` in `fumadocs-core/page-tree`
+
+Find the structural projection of a page in another root folder, the page at the same file path relative to the root folder:
+
+```ts
+import { findProjection } from 'fumadocs-core/page-tree';
+
+findProjection(v1, v2, page)?.url;
+```
+
+## @fumadocs/base-ui@16.15.4
+
+### Fix Next.js `<Link>` not scrolling to top under docs layouts
+
+The page container rendered `<main style="display: contents">`, which Next.js' scroll handler treats as a hidden element: `display: contents` generates no box, so its `getBoundingClientRect()` is all-zero, indistinguishable from `display: none`. The handler skips it (and the sticky TOC siblings) without ever descending into children, dropping the scroll-to-top on navigation entirely.
+
+The `<main>` element in Docs, Notebook and Flux page containers is now a real grid item (`display: grid; grid-area: main`) wrapping the unchanged `#nd-page` article, which centers via the grid instead of `mx-auto`. Rendering is identical, but if your custom CSS has element rules on `main` that were previously inert, they now apply.
+
+## @fumadocs/base-ui@16.15.2
+
+### Improve Vitepress theme
+
+More contrast & aligned to Vitepress.
+
+## @fumadocs/base-ui@16.14.5
+
+### Add a `main` landmark to docs, notebook and flux pages
+
+The page container slot now wraps `<article id="nd-page">` in a `<main class="contents">` in the docs, notebook and flux layouts. All props, `id="nd-page"` and the layout classes stay on the `<article>`, so existing selectors and refs keep working.
+
+## @fumadocs/base-ui@16.14.3
+
+### Fix TOC overscroll
+
+## @fumadocs/base-ui@16.14.2
+
+### Fix crash in `DynamicCodeBlock` when `options` is undefined
+
+`DynamicCodeBlock` read `options.components` unconditionally while building its Shiki config, even though `options` is optional on the public wrapper component. Passing an explicit `options={undefined}` (e.g. a value forwarded from another optional prop) crashed with `Cannot read properties of undefined (reading 'components')` instead of falling back to the default `pre` renderer.
+
+`options` is now read with optional chaining, so an undefined `options` behaves the same as omitting the prop entirely.
+
+## @fumadocs/base-ui@16.14.0
+
+### Replace Orama with ZBSearch, zero-config i18n search
+
+The built-in search engine moved from `@orama/orama` to [ZBSearch](https://www.zbsearch.dev), a near drop-in successor. All module paths and APIs are unchanged, and search now works with **every language out of the box**: the new default `multilingual` mode uses Unicode word segmentation, so i18n search needs zero config.
+
+```ts
+import { createFromSource } from 'fumadocs-core/search/server';
+
+// no `localeMap`, no `@orama/tokenizers`, CJK included
+export const { GET } = createFromSource(source);
+```
+
+All locales now share a single search database — results are filtered by the locale of your pages at query time. Same for static mode:
+
+```ts
+import { staticClient } from 'fumadocs-core/search/client/orama-static';
+
+const client = staticClient({ locale });
+```
+
+### Renames
+
+- `oramaStaticClient` → `staticClient` (old name kept as deprecated alias)
+- `initOrama` → `initDB`, it now creates a ZBSearch instance and is optional — the exported data restores the tokenizer on load
+
+### Deprecated
+
+- `localeMap` is no longer needed. It still works for language-specific stemming/stop-words and keeps the legacy per-locale databases when specified.
+
+### Notes for advanced usage
+
+- `language`, `components`, `plugins` and `search` options are now typed against ZBSearch instead of `@orama/orama` — custom tokenizers or plugins written for Orama must be swapped to their ZBSearch equivalents.
+- The exported static search data is now a ZBSearch database (i18n exports became a single unified database), so server and client should be on the same fumadocs-core version.
+- `@orama/orama` and `@orama/tokenizers` can be removed from your dependencies unless you use them directly. Orama **Cloud** integrations (`fumadocs-core/search/orama-cloud`) are unaffected.
+
+## @fumadocs/base-ui@16.13.0
+
+### Add hotkey for toggling light/dark mode
+
+Press <kbd>D</kbd> to toggle between light and dark mode. It is ignored while typing in an editable element or when a dialog (e.g. search) is opened.
+
+Customise it with the `theme.hotKey` option of `<RootProvider />`, or pass `false` to disable.
+
+## @fumadocs/base-ui@16.12.1
+
+### Fix bugs in Flux layout
+
+## @fumadocs/base-ui@16.12.0
+
+### Fix invalid list semantics in Home layout navbar
+
+`NavigationMenu.List` in the Home layout header defaults to a `<ul>`, but its direct children (nav title link, link groups, control clusters) are not `<li>` elements, which is an accessibility violation (axe `list`, serious) on every page using `HomeLayout`. Render it as a `<div>` instead — the same intent as the Radix UI variant, which already renders its list as a non-`<ul>` element via `asChild`.
+
+### Introduce Glass Layout
+
+A new layout for docs, a smooth, beautiful variant built around floating, translucent panels.
+
+### Don't force-mount inactive tab content by default
+
+Styled `Tabs` previously kept every tab panel mounted in the DOM (hidden with `display: none`). Inactive panels are now unmounted by default, following the underlying primitive.
+
+You can still opt back into keeping panels mounted per tab with `forceMount` (`fumadocs-ui`) or `keepMounted` (`@fumadocs/base-ui`) on `Tab` / `TabsContent`.
+
+### Open the tab containing a linked heading
+
+When a tab's content stays mounted (`forceMount` / `keepMounted`), navigating to a URL hash that points to an element inside a tab — such as a Table of Contents link to a heading — now opens the tab it belongs to and scrolls to the target. This runs on both initial load and `hashchange`.
+
+## @fumadocs/base-ui@16.11.5
+
+### Correct codeblock props
+
+The type of `title` is now `ReactNode` instead of string.
+
+### Expose sidebar trigger state to assistive technology
+
+`SidebarTrigger` now sets `aria-expanded` and `aria-controls`, and its label changes between `Open Sidebar` and `Close Sidebar` depending on the state.
+
+Previously, both the button opening the mobile sidebar and the one closing it were named `Open Sidebar`, and neither conveyed whether the sidebar was open.
+
+A new `Close Sidebar` translation key is available for customisation.
+
+## @fumadocs/base-ui@16.11.2
+
+### Add Astro framework support
+
+Add Astro as a supported framework with React islands, including framework providers, an example app, create-app template support, search integration, OG image generation, and documentation.
+
+### Fix interaction problems
+
+Ensure search dialog input to be focused even on touch devices.
+
+## @fumadocs/base-ui@16.11.1
+
+### Fix minor UI inconsistencies
+
+More aligned with original styles.
+
+## @fumadocs/base-ui@16.11.0
+
+### Updated the theme switch to use `document.startViewTransition()` for smoother theme transitions with graceful fallback.
+
+
+
+### Default to Base UI
+
+Internal packages & templates now use Base UI rather than Radix UI.
+
+### Support `noCopy` attribute for codeblocks
+
+Use `noCopy` to remove copy button from codeblocks.
+
+## @fumadocs/base-ui@16.10.7
+
+### Fix Page Actions base path handling
+
+The `<PageActions />` component will handle base path for passed `markdownUrl`.
+
+## @fumadocs/base-ui@16.10.6
+
+### Migrate to `cnfast`
+
+Drop `tailwind-merge`.
+
+## @fumadocs/base-ui@16.10.5
+
+### Fix "Open in ChatGPT" page action URL
+
+ChatGPT now uses the `prompt` query parameter (it redirects `q` to `prompt`), so the page action link is built as `https://chatgpt.com/?prompt=...&hints=search` to open reliably.
+
+# @fumadocs/base-ui
+
+## 16.10.3
+
+### Patch Changes
+
+- 5499f59: type-safe provider props
+  - fumadocs-core@16.10.3
+
+## 16.10.2
+
+### Patch Changes
+
+- e977acf: **Change the TOC variants**
+
+  The "clerk" TOC variant will revert to the original Clerk-like style, the redesigned TOC (the one you see on official docs) will be the new default.
+
+- 0997dd6: Deprecate `type: "xxx"` usage of `useDocsSearch()`, pass the `client` object instead. The allows a smaller bundle size with improved performance.
+- Updated dependencies [7e9548b]
+- Updated dependencies [0997dd6]
+- Updated dependencies [71d58b8]
+  - fumadocs-core@16.10.2
+
+## 16.10.1
+
+### Patch Changes
+
+- 5017289: Use stable `fuma-translate`
+- 7a77722: fix display name of languages
+  - fumadocs-core@16.10.1
+
+## 16.10.0
+
+### Minor Changes
+
+- 779efff: **Introduce new translations API**
+
+  It is now powered by `fuma-translate`. Be careful: while the API surface is same, some translation keys are changed, unused labels will be ignored.
+
+### Patch Changes
+
+- 0cc1fac: Make `uiTranslations()` optional for translations API
+- Updated dependencies [9b9545f]
+  - fumadocs-core@16.10.0
+
+## 16.9.3
+
+### Patch Changes
+
+- Updated dependencies [42f0255]
+- Updated dependencies [a807798]
+  - fumadocs-core@16.9.3
+
+## 16.9.2
+
+### Patch Changes
+
+- 84ce691: consistent toc size when empty
+- Updated dependencies [5d579bd]
+- Updated dependencies [5836093]
+  - fumadocs-core@16.9.2
+
+## 16.9.1
+
+### Patch Changes
+
+- Updated dependencies [e77b9b3]
+- Updated dependencies [334c8fd]
+  - fumadocs-core@16.9.1
+
+## 16.9.0
+
+### Minor Changes
+
+- 214d5b0: Introduce new translations API
+
+### Patch Changes
+
+- Updated dependencies [818ed21]
+- Updated dependencies [214d5b0]
+- Updated dependencies [3b66725]
+  - fumadocs-core@16.9.0
+
+## 16.8.12
+
+### Patch Changes
+
+- Updated dependencies [768b676]
+  - fumadocs-core@16.8.12
+
+## 16.8.11
+
+### Patch Changes
+
+- Updated dependencies [1dc86c7]
+  - fumadocs-core@16.8.11
+
+## 16.8.10
+
+### Patch Changes
+
+- Updated dependencies [062beab]
+- Updated dependencies [505cfe0]
+  - fumadocs-core@16.8.10
+
+## 16.8.9
+
+### Patch Changes
+
+- Updated dependencies [2ca3eab]
+  - fumadocs-core@16.8.9
+
+## 16.8.8
+
+### Patch Changes
+
+- b494c8d: Support copy ID in headings
+- 03626ba: [Search UI] show `ctrl` for Linux machines
+  - fumadocs-core@16.8.8
+
+## 16.8.7
+
+### Patch Changes
+
+- 34f37f3: hotfix TOC
+  - fumadocs-core@16.8.7
+
+## 16.8.6
+
+### Patch Changes
+
+- 1aa48d0: fix RTL layout for Clerk style
+  - fumadocs-core@16.8.6
+
+## 16.8.5
+
+### Patch Changes
+
+- Updated dependencies [79d3209]
+  - fumadocs-core@16.8.5
+
+## 16.8.4
+
+### Patch Changes
+
+- b5ff03b: Support new OG image design for Takumi
+- Updated dependencies [61b15e9]
+- Updated dependencies [1a5433c]
+  - fumadocs-core@16.8.4
+
+## 16.8.3
+
+### Patch Changes
+
+- fumadocs-core@16.8.3
+
+## 16.8.2
+
+### Patch Changes
+
+- 0e8405a: Update default OG image
+  - fumadocs-core@16.8.2
+
+## 16.8.1
+
+### Patch Changes
+
+- 3ae8809: Improve TOC sizing
+  - fumadocs-core@16.8.1
+
+## 16.8.0
+
+### Patch Changes
+
+- Updated dependencies [68c2b49]
+- Updated dependencies [b60fa32]
+- Updated dependencies [a744f9f]
+- Updated dependencies [92a1204]
+  - fumadocs-core@16.8.0
+
+## 16.7.16
+
+### Patch Changes
+
+- f2c6e59: Reduce iterations for calculating TOC track
+- 9cf33e9: Improve inline code output
+- 9cf33e9: Support async hooks in Shiki transformers
+- Updated dependencies [9cf33e9]
+- Updated dependencies [9cf33e9]
+  - fumadocs-core@16.7.16
+
+## 16.7.15
+
+### Patch Changes
+
+- c731a92: Implement selective re-render for TOC
+- ccad791: Expose `next-themes`
+- Updated dependencies [e1567e2]
+- Updated dependencies [9a200c8]
+- Updated dependencies [c731a92]
+- Updated dependencies [a4189ce]
+  - fumadocs-core@16.7.15
+
+## 16.7.14
+
+### Patch Changes
+
+- 2d8f596: fix `npm pack` skipping nested `node_modules`
+- Updated dependencies [2d8f596]
+  - @fumadocs/tailwind@0.0.5
+  - fumadocs-core@16.7.14
+
+## 16.7.13
+
+### Patch Changes
+
+- 690ddb9: bundle more deps
+- Updated dependencies [690ddb9]
+  - @fumadocs/tailwind@0.0.4
+  - fumadocs-core@16.7.13
+
+## 16.7.12
+
+### Patch Changes
+
+- a5dcc11: allow to specify `<TOCItems />` props
+- 56f7e5b: Improve TOC thumb box
+  - fumadocs-core@16.7.12
+
+## 16.7.11
+
+### Patch Changes
+
+- Updated dependencies [5524927]
+- Updated dependencies [d47c4f1]
+  - fumadocs-core@16.7.11
+
+## 16.7.10
+
+### Patch Changes
+
+- 1473bee: fix: allow internal link resolver to resolve for "../" links
+  - fumadocs-core@16.7.10
+
+## 16.7.9
+
+### Patch Changes
+
+- f580ef6: Fix deserialized page tree item name styles
+- Updated dependencies [f580ef6]
+  - fumadocs-core@16.7.9
+
+## 16.7.8
+
+### Patch Changes
+
+- f7e69a6: Redesign sidebar footer
+  - fumadocs-core@16.7.8
+
+## 16.7.7
+
+### Patch Changes
+
+- 0f39a9f: Improve TOC rendering for steps
+- Updated dependencies [0a6507b]
+  - fumadocs-core@16.7.7
+
+## 16.7.6
+
+### Patch Changes
+
+- 6849807: Fix `shiki.css` padding
+  - fumadocs-core@16.7.6
+
+## 16.7.5
+
+### Patch Changes
+
+- 55479b3: Improve TOC detection logic
+- f9e6367: auto-close TOC popover
+- Updated dependencies [55479b3]
+  - fumadocs-core@16.7.5
+
+## 16.7.4
+
+### Patch Changes
+
+- 57c83a5: fix toc
+  - fumadocs-core@16.7.4
+
+## 16.7.3
+
+### Patch Changes
+
+- 9580621: fix sidebar scroll area
+- 7aa66f2: Redesign home layout navigation menu
+  - fumadocs-core@16.7.3
+
+## 16.7.2
+
+### Patch Changes
+
+- 652c725: Simplify internal types
+  - fumadocs-core@16.7.2
+
+## 16.7.1
+
+### Patch Changes
+
+- 11b8691: hotfix
+- 75b0b94: Refactor TOC slot
+  - fumadocs-core@16.7.1
+
+## 16.7.0
+
+### Minor Changes
+
+- 8bdee70: Implement renderer API for replacing layout components, deprecate old options
+- bdffeba: Improved `defineI18nUI()` usage: allow language translations to be defined at root config.
+- f45d703: stabilize Shiki factory API
+
+### Patch Changes
+
+- 3d17757: Improve `<GithubInfo />` component
+- Updated dependencies [f45d703]
+- Updated dependencies [45aa454]
+  - fumadocs-core@16.7.0
+
+## 16.6.17
+
+### Patch Changes
+
+- c3a723e: fix codeblock RSC highlighting
+- Updated dependencies [c2678c0]
+- Updated dependencies [417f07a]
+- Updated dependencies [bb07706]
+- Updated dependencies [f065406]
+  - fumadocs-core@16.6.17
+
+## 16.6.16
+
+### Patch Changes
+
+- Updated dependencies [054da73]
+  - fumadocs-core@16.6.16
+
+## 16.6.15
+
+### Patch Changes
+
+- 86d3abb: fix broken tsdown CSS logic
+  - fumadocs-core@16.6.15
+
+## 16.6.14
+
+### Patch Changes
+
+- a02048c: UI: override MDX types by default
+- 02201df: Simplify i18n setup
+- Updated dependencies [8382363]
+  - fumadocs-core@16.6.14
+
+## 16.6.13
+
+### Patch Changes
+
+- 2702b28: Bundle page actions into UI
+  - fumadocs-core@16.6.13
+
+## 16.6.12
+
+### Patch Changes
+
+- Updated dependencies [ddb0f81]
+  - fumadocs-core@16.6.12
+
+## 16.6.11
+
+### Patch Changes
+
+- Updated dependencies [d35f30c]
+- Updated dependencies [ae3e742]
+- Updated dependencies [269dfb3]
+  - fumadocs-core@16.6.11
+
+## 16.6.10
+
+### Patch Changes
+
+- Updated dependencies [9b5c2dd]
+  - fumadocs-core@16.6.10
+
+## 16.6.9
+
+### Patch Changes
+
+- 0aad574: fix: reverse sidebar chevron direction for RTL layouts
+
+  In RTL mode, the `ChevronDown` icon in collapsed sidebar folders was
+  incorrectly pointing to the right (via `-rotate-90`). Added `rtl:rotate-90`
+  so the icon points to the left when the folder is collapsed, matching
+  the expected RTL reading direction.
+
+- 6a7725b: fix: use logical CSS properties in Steps component for RTL support
+- 7a61fa5: Support `codeblock.rsc` API for server-side codeblocks
+- Updated dependencies [4d05c4e]
+- Updated dependencies [5f687b6]
+  - fumadocs-core@16.6.9
+
+## 16.6.8
+
+### Patch Changes
+
+- 5453502: use Shiki.js v4
+- 8fc467a: fix home layout navbar
+- Updated dependencies [5453502]
+  - @fumadocs/tailwind@0.0.3
+  - fumadocs-core@16.6.8
+
+## 16.6.7
+
+### Patch Changes
+
+- 8faa2e4: fix codeblock highlight styles
+  - fumadocs-core@16.6.7
+
+## 16.6.6
+
+### Patch Changes
+
+- 38bd784: improve flux layout
+  - fumadocs-core@16.6.6
+
+## 16.6.5
+
+### Patch Changes
+
+- Updated dependencies [1a614de]
+- Updated dependencies [6ab6692]
+  - fumadocs-core@16.6.5
+
+## 16.6.4
+
+### Patch Changes
+
+- 8f8e7f0: fix accessibility issues
+  - fumadocs-core@16.6.4
+
+## 16.6.3
+
+### Patch Changes
+
+- 1c26656: Extend grid of docs layout to 5 columns
+  - fumadocs-core@16.6.3
+
+## 16.6.2
+
+### Patch Changes
+
+- cfc5590: Implement `active` on sidebar link items
+  - fumadocs-core@16.6.2
+
+## 16.6.1
+
+### Patch Changes
+
+- 89c6e65: fix search dialog shortcuts
+- Updated dependencies [00c9a0f]
+  - fumadocs-core@16.6.1
+
+## 16.6.0
+
+### Minor Changes
+
+- 9241992: **Support Markdown in search results**
+
+  This deprecates the old `contentWithHighlights` field in search results, the highlights are marked with Markdown instead (e.g. `Hello <mark>World</mark>`).
+
+### Patch Changes
+
+- Updated dependencies [9241992]
+- Updated dependencies [64a0057]
+  - fumadocs-core@16.6.0
+
+## 16.5.4
+
+### Patch Changes
+
+- Updated dependencies [1ad8a38]
+- Updated dependencies [3e8efb0]
+  - fumadocs-core@16.5.4
+
+## 16.5.3
+
+### Patch Changes
+
+- Updated dependencies [be957f1]
+  - fumadocs-core@16.5.3
+
+## 16.5.2
+
+### Patch Changes
+
+- c22f6ee: bump tsdown
+- Updated dependencies [c22f6ee]
+  - @fumadocs/tailwind@0.0.2
+  - fumadocs-core@16.5.2
+
+## 16.5.1
+
+### Patch Changes
+
+- c08364a: support Flux layout
+- 53ad20b: Pre-scan class names to optimize Tailwind CSS compilation performance
+- Updated dependencies [db93ebd]
+  - @fumadocs/tailwind@0.0.1
+  - fumadocs-core@16.5.1
+
+## 16.5.0
+
+### Patch Changes
+
+- 85cc22f: support `.core` exports for dynamic codeblocks, migrate to effect-based `useShiki()` to avoid limitations of `<Suspense />`.
+- Updated dependencies [85cc22f]
+- Updated dependencies [9ba1250]
+  - @fumadocs/ui@16.5.0
+  - fumadocs-core@16.5.0
+
+## 16.4.11
+
+### Patch Changes
+
+- Updated dependencies [a75a84d]
+  - fumadocs-core@16.4.11
+  - @fumadocs/ui@16.4.11
+
+## 16.4.10
+
+### Patch Changes
+
+- 430a5f1: support `on` on docs layout
+- Updated dependencies [099fde7]
+- Updated dependencies [6fd7e63]
+  - fumadocs-core@16.4.10
+  - @fumadocs/ui@16.4.10
+
+## 16.4.9
+
+### Patch Changes
+
+- Updated dependencies [48dd0c2]
+  - fumadocs-core@16.4.9
+  - @fumadocs/ui@16.4.9
+
+## 16.4.8
+
+### Patch Changes
+
+- Updated dependencies [0025484]
+  - fumadocs-core@16.4.8
+  - @fumadocs/ui@16.4.8
+
+## 16.4.7
+
+### Patch Changes
+
+- Updated dependencies [0765817]
+- Updated dependencies [5dec9d0]
+  - @fumadocs/ui@16.4.7
+  - fumadocs-core@16.4.7
+
+## 16.4.6
+
+### Patch Changes
+
+- Updated dependencies [ea57dbf]
+  - fumadocs-core@16.4.6
+  - @fumadocs/ui@16.4.6
+
+## 16.4.5
+
+### Patch Changes
+
+- 9f06196: fix `footer.children` props
+  - fumadocs-core@16.4.5
+  - @fumadocs/ui@16.4.5
+
+## 16.4.4
+
+### Patch Changes
+
+- c804ac6: expose `useAutoScroll()`
+- Updated dependencies [cdc97e0]
+  - fumadocs-core@16.4.4
+  - @fumadocs/ui@16.4.4
+
+## 16.4.3
+
+### Patch Changes
+
+- 84ce624: Keep default prefetch behaviours in sidebar
+- Updated dependencies [f5dcb7c]
+- Updated dependencies [7e08b2f]
+  - fumadocs-core@16.4.3
+  - @fumadocs/ui@16.4.3
+
+## 16.4.2
+
+### Patch Changes
+
+- b16a32f: Switch to tsdown for bundling
+- Updated dependencies [590d36a]
+- Updated dependencies [98d38ff]
+- Updated dependencies [446631d]
+- Updated dependencies [b16a32f]
+  - fumadocs-core@16.4.2
+  - @fumadocs/ui@16.4.2
+
+## 16.4.1
+
+### Patch Changes
+
+- Updated dependencies [0a3adb8]
+  - @fumadocs/ui@16.4.1
+  - fumadocs-core@16.4.1
+
+## 16.4.0
+
+### Patch Changes
+
+- da98fe2: Support `onSelect` prop in `<SearchDialog />` component
+- Updated dependencies [a3b7919]
+  - fumadocs-core@16.4.0
+  - @fumadocs/ui@16.4.0
+
+## 16.3.2
+
+### Patch Changes
+
+- 7c78045: Support custom renderer for `title` in layouts
+  - @fumadocs/ui@16.3.2
+  - fumadocs-core@16.3.2
+
+## 16.3.1
+
+### Patch Changes
+
+- f398e36: Improve sidebar dropdown
+  - fumadocs-core@16.3.1
+  - @fumadocs/ui@16.3.1
+
+## 16.3.0
+
+### Minor Changes
+
+- a69b060: Support both Base UI and Radix UI as base component libraries
+
+### Patch Changes
+
+- Updated dependencies [a69b060]
+  - fumadocs-core@16.3.0
+  - @fumadocs/ui@16.3.0

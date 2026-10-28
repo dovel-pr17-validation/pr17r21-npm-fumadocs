@@ -1,0 +1,156 @@
+import { useCallback, useRef } from 'react';
+import type { OramaCloud, OramaCloudSearchParams } from '@orama/core';
+import { removeUndefined } from '@/utils/remove-undefined';
+import type { OramaIndex } from '@/search/orama-cloud';
+import type { SortedResult } from '@/search';
+import type { SearchClient } from '../client';
+import { type UseSearchOptions, useSearch } from '../use-search';
+
+interface CrawlerIndex {
+  path: string;
+  title: string;
+  content: string;
+  section: string;
+  category: string;
+}
+
+export interface OramaCloudOptions {
+  client: OramaCloud;
+  /**
+   * The type of your index.
+   *
+   * You can set it to `crawler` if you use crawler instead of the JSON index with schema provided by Fumadocs
+   */
+  index?: 'default' | 'crawler';
+
+  /**
+   * Note: not included in dependency list.
+   */
+  params?: Partial<OramaCloudSearchParams>;
+
+  /**
+   * Filter results with specific tag.
+   */
+  tag?: string;
+
+  /**
+   * Filter by locale (unsupported at the moment)
+   */
+  locale?: string;
+}
+
+async function searchOramaCloud(
+  options: OramaCloudOptions,
+  query: string,
+): Promise<SortedResult[]> {
+  const { index = 'default', client, params: extraParams, tag } = options;
+  const list: SortedResult[] = [];
+
+  if (index === 'crawler') {
+    const result = await client.search({
+      datasources: [],
+      ...extraParams,
+      term: query,
+      where: {
+        category: tag
+          ? {
+              eq: tag.slice(0, 1).toUpperCase() + tag.slice(1),
+            }
+          : undefined,
+        ...extraParams?.where,
+      },
+      limit: 10,
+    });
+    if (!result) return list;
+
+    for (const hit of result.hits) {
+      const doc = hit.document as unknown as CrawlerIndex;
+
+      list.push(
+        {
+          id: hit.id,
+          type: 'page',
+          content: doc.title,
+          url: doc.path,
+        },
+        {
+          id: 'page' + hit.id,
+          type: 'text',
+          content: doc.content,
+          url: doc.path,
+        },
+      );
+    }
+
+    return list;
+  }
+
+  const result = await client.search({
+    datasources: [],
+    properties: ['title', 'section', 'content'],
+    ...extraParams,
+    term: query,
+    limit: 20,
+    where: removeUndefined({
+      tag,
+      ...extraParams?.where,
+    }),
+    groupBy: {
+      properties: ['page_id'],
+      max_results: 7,
+      ...extraParams?.groupBy,
+    },
+  });
+  if (!result || !result.groups) return list;
+
+  for (const item of result.groups) {
+    let addedHead = false;
+
+    for (const hit of item.result) {
+      const doc = hit.document as unknown as OramaIndex;
+
+      if (!addedHead) {
+        list.push({
+          id: doc.page_id,
+          type: 'page',
+          content: doc.title,
+          breadcrumbs: doc.breadcrumbs,
+          url: doc.url,
+        });
+        addedHead = true;
+      }
+
+      list.push({
+        id: doc.id,
+        content: doc.content,
+        type: doc.content === doc.section ? 'heading' : 'text',
+        url: doc.section_id ? `${doc.url}#${doc.section_id}` : doc.url,
+        table: doc.table,
+      });
+    }
+  }
+
+  return list.length > 80 ? list.slice(0, 80) : list;
+}
+
+export function oramaCloudClient(options: OramaCloudOptions): SearchClient {
+  return {
+    deps: [options.index, options.client, options.tag],
+    search: (query) => searchOramaCloud(options, query),
+  };
+}
+
+export function useOramaCloudSearch({
+  client,
+  index,
+  tag,
+  ...rest
+}: OramaCloudOptions & UseSearchOptions) {
+  const latest = useRef(rest);
+  latest.current = rest;
+  const run = useCallback(
+    (query: string) => searchOramaCloud({ ...latest.current, client, index, tag }, query),
+    [client, index, tag],
+  );
+  return useSearch(run, rest);
+}

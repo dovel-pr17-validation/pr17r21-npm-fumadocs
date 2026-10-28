@@ -1,0 +1,403 @@
+## @fumadocs/asyncapi@0.5.3
+
+### Bring your own highlighter
+
+Shiki stays the default, and isn't loaded when you highlight code with another highlighter.
+
+- `fumadocs-core/highlight` exports a `Highlighter` interface, created with `createHighlights()` from `fumadocs-core/highlight/highlights` (`@pierre/highlights`) or `createShikiHighlighter()` from `fumadocs-core/highlight/shiki`, `override()` creates one with other options.
+- `rehypeCodeFromHighlighter` from `fumadocs-core/mdx-plugins/rehype-code.core` highlights code blocks with a highlighter, or a function creating one with the transformers of Fumadocs. `createRehypeCode` is deprecated, Sätteri has `rehypeCodeFromHighlighter` in `@fumadocs/satteri/rehype-code`. Pass `transformerTwoslash()` in its `transformers` option to analyze Twoslash blocks in batches.
+- `createServerCodeBlock()` and `createDynamicCodeBlock()` in Fumadocs UI create code blocks from a highlighter. Dynamic code blocks are highlighted on the server too.
+- `toJsx()` from `fumadocs-core/utils/hast-to-jsx` converts hast into React elements like `toJsxRuntime()` of `hast-util-to-jsx-runtime`, MDX nodes through an `evaluator`, over 10x faster on highlighted code, whose spans render as one HTML string. Every Fumadocs renderer uses it, `hast-util-to-jsx-runtime` is no longer a dependency.
+- Twoslash loads the languages of code blocks in popups before highlighting, an unknown language there no longer fails the code block.
+- OpenAPI Standalone highlights code blocks with Highlights, in its server-rendered pages too.
+- The page factories of OpenAPI, GraphQL and AsyncAPI, type tables, `createPython()`, `createPythonComponents()`, `localHtml()` and the shadcn `createSnippet()` take a `highlighter`.
+- Deprecated `shiki` and `shikiOptions` of the API pages and `shiki` of type tables, pass a `highlighter` instead.
+- Integrations require `fumadocs-core` 16.17.8, the API pages and shadcn also require `fumadocs-ui` 16.17.8.
+
+## @fumadocs/asyncapi@0.5.2
+
+### Load documents once
+
+- `includeDocument: false` of `createOpenAPI()` and `createAsyncAPI()` leaves documents out of page props, pages load each one once per browser session with `loadDocument` of `createOpenAPIPage()` and `createAsyncAPIPage()`.
+- Same for GraphQL schemas: `includeSchema: false` of `createGraphQL()` with `loadSchema` of `createGraphQLPage()`.
+
+## @fumadocs/asyncapi@0.5.1
+
+### TypeScript definitions on copy
+
+- Message schemas generate their TypeScript definitions when the button copies them, not on every render.
+
+### Example cards with code block title bars
+
+- Example cards put their controls in the title bar of their code block, next to its copy button, so code no longer runs under the button on narrow screens.
+- Selects with a single option, like one status code, show a plain label.
+- The playground button follows the corner radius of the bar around it.
+
+### Generated pages in every language
+
+- Virtual files accept a `locale`, `$` for every language, instead of parsing it from their path.
+- Pages from `staticSource()` and `dynamicSource()` of OpenAPI, AsyncAPI and GraphQL are shared with every language of `loader()`.
+
+Fix [#3720](https://github.com/fuma-nama/fumadocs/issues/3720)
+
+## @fumadocs/asyncapi@0.5.0
+
+### Redesigned AsyncAPI pages
+
+- Messages are labelled **Receive** and **Send** for readers, instead of the `send` and `receive` of the documented application, the sidebar shows them as icons.
+- A connection bar shows the channel address with the server below it, brokers label the address as a topic, queue or subject.
+- Messages are listed in an accordion, their examples beside the payload and headers on wide pages.
+- Example cards are titled with the name and summary of examples, selects switch to other examples and to their headers.
+- Protocol details only show the bindings of the selected server, `x-*` bindings are hidden.
+- A playground connects to channels, sends messages from their examples and identifies the received ones.
+- The playground edits address parameters in its URL and previews the URL to connect.
+- Code samples beside operations in JavaScript and Python for WebSocket, MQTT, Kafka, AMQP and NATS servers, and from `x-codeSamples` of operations.
+- Playground transports connect by protocol: WebSocket is built in, `sseTransport` receives Server-Sent Events.
+- The playground sends text, hex and Base64 messages, and previews binary ones in hex.
+- Security schemes show OAuth 2.0 flows, scopes and SASL mechanisms.
+- Avro, Protobuf and RAML schemas are shown as they are.
+
+### Fixes
+
+- Later traits override earlier ones, as the spec merges them in order.
+- `defaultContentType` applies to messages without `contentType`.
+- `per: 'tag'` matches tags by name, operations without tags are under `unknown`.
+- `groupBy: 'channel'` names folders by channel keys and files by operation ids.
+- Channels with empty `servers` are available on all servers.
+- Operations sharing a title on one page get unique anchors.
+- AsyncAPI 2 documents throw an error instead of generating no pages.
+- `imports: []` no longer adds an empty line to generated files.
+- Operations show the description of their channel, it is in search and Markdown too.
+- `readOnly` properties are hidden from messages readers send and `writeOnly` ones from messages they receive, in schemas, TypeScript types and generated examples, instead of both from all messages.
+
+### API changes
+
+| Before                                                          | Now                                 |
+| --------------------------------------------------------------- | ----------------------------------- |
+| `slots.server` and `slots.channel` of `renderOperationLayout`   | `slots.connection`                  |
+| `content.renderAPIExampleUsageTabs`                             | removed, examples are in messages   |
+| `useOperationSecurity()` returns schemes of operation or server | `{ server, operation }`, both apply |
+| `payload` and `headers` of `OperationMessage` are schemas       | `{ schema, schemaFormat? }`         |
+| `OperationReply.messages` have `title` and `payload`            | `OperationMessage[]`                |
+| `action` prop of `<Operation />` and `<OperationProvider />`    | removed, read from the operation    |
+| `preloaded.proxyUrl` of `AsyncAPIPageProps_Preloaded`           | removed, it was never used          |
+| `meta.groupStyle` of `generateFiles()`                          | removed, use `folderStyle`          |
+
+- Added the `playground` option of `createAsyncAPIPage()` with `transports`, and `usePlayground()`, `usePlaygroundTransport()` and `sseTransport` from `@fumadocs/asyncapi/playground`.
+- Added the `generateTypeScriptDefinitions` option, payloads and headers can be copied as TypeScript types.
+- Added the `codeUsages` option and `slots.usage` of `renderOperationLayout`, with `createCodeUsageGeneratorRegistry()` and `registerDefaultCodeUsages()` from `@fumadocs/asyncapi/ui`.
+- Added `getText()` to the data of AsyncAPI pages, their operations in Markdown for LLMs.
+- Added `received` to `OperationMessage`, whether readers receive the message.
+
+## @fumadocs/asyncapi@0.4.6
+
+### Refuse schemas not listed in `input`
+
+- `getSchema()` and page preloads throw for schema IDs not listed in `input`, instead of loading them as file paths or URLs.
+
+## @fumadocs/asyncapi@0.4.5
+
+### Share `@fumari/stf` and `@fumadocs/json-schema` with installed UI
+
+They are depended on with a caret range instead of an exact version, so UI installed with Fumadocs CLI can share one copy with the package.
+
+## @fumadocs/asyncapi@0.4.4
+
+### Fix `imports` option of `generateFiles()`
+
+Imports were written one character per line. They are now written as whole `import` lines, same as the fix for `fumadocs-openapi` in #3678.
+
+## @fumadocs/asyncapi@0.4.3
+
+### Fix images in descriptions, show the OAuth redirect URI
+
+- Images in Markdown of API pages, like the description of an operation, and in descriptions of `<AutoTypeTable />` props no longer crash the page with "Element type is invalid".
+- The OAuth panel of the playground shows the `redirect_uri` of the authorization code and implicit flows, with a button to copy it: the `oauthRedirectUrl` route when set, otherwise the current page.
+- The Authorize row of OAuth schemes in the playground is one button, filling the row.
+
+Fix [#3661](https://github.com/fuma-nama/fumadocs/issues/3661), [#3663](https://github.com/fuma-nama/fumadocs/issues/3663)
+
+## @fumadocs/asyncapi@0.4.2
+
+### Schema UI in cards
+
+Nested schemas open in a card instead of a popover, navigated with breadcrumbs on top of it. Request bodies and responses render in the card directly, a property opens its card below itself.
+
+- Panels slide in from the side they are navigated to, the page scrolls back to the breadcrumbs after navigating.
+- Breadcrumbs that don't fit collapse into a menu, keeping the first crumb and the ones closest to the current schema.
+- The union selector moves next to the breadcrumbs, the filter into the top of the card. In narrow cards, the filter takes a row of its own.
+- Rows are more compact, enum values and constraints are shown as tags.
+- The Schema UI client props accept `selector`, shown above the breadcrumbs, and `actions`, shown next to the filter.
+
+On API pages:
+
+- The media type of request bodies and responses is selected in the top of their cards.
+- Authorization fields start with where they are sent, like `header` or `query`. The security requirement is selected in the top of their card.
+- Parameters and authorization are grouped in cards.
+- Responses are tabs of their status codes instead of accordions, a link to a response selects its tab and scrolls to it.
+- Callbacks open in a dialog instead of expanding in the page, with their full URL on top.
+- Runtime expressions in routes, like `{$request.body#/url}`, are highlighted as a whole.
+- TypeScript definitions are copied from a button in the top of the body and response cards.
+
+## @fumadocs/asyncapi@0.4.1
+
+### Name schema property link buttons for screen readers
+
+Give the icon-only property link button a translated label and announce when its link has been copied.
+Include Simplified and Traditional Chinese translations for both labels.
+
+## @fumadocs/asyncapi@0.4.0
+
+### Headless AsyncAPI pages
+
+#### Headless API pages
+
+API pages are now built on a headless layer, use it to build your own UI:
+
+- `createAsyncAPIRenderer()` and `<AsyncAPIProvider />` with your own components.
+- the hooks of pages and operations: `useAsyncAPI()`, `useComponents()`, `useRenderContext()`, `useServer()`, `useOperation()` and `useOperationSecurity()`.
+- `useServer()` resolves server URLs: `resolveUrl(id)` fills in the variables of a server, and the selected one carries its `title`.
+
+```tsx title="components/api-page.tsx"
+'use client';
+import { createAsyncAPIRenderer } from '@fumadocs/asyncapi';
+
+export const AsyncAPIPage = createAsyncAPIRenderer({
+  components: { Operation, Markdown, CodeBlock, Heading, SchemaUI },
+});
+```
+
+See [Headless](https://fumadocs.dev/docs/integrations/asyncapi/headless).
+
+`@fumadocs/asyncapi/ui` renders through the layer, its options are unchanged except `content.renderAPIExampleLayout`, which was never rendered and is removed.
+
+#### Install the UI
+
+The UI of API pages can be installed with Fumadocs CLI and edited, reusing the `components/ui` files you already have:
+
+```npm
+npx @fumadocs/cli add fumadocs/asyncapi/page
+```
+
+It installs `<AsyncAPIPage />` itself, import it from `@/components/asyncapi/page` in place of your `components/api-page.tsx`.
+
+To replace parts of it, install `fumadocs/asyncapi/operation` or `fumadocs/api-docs/schema` and pass them to the new `components` options:
+
+```tsx
+export const AsyncAPIPage = createAsyncAPIPage({
+  components: { Operation, SchemaUI: Schema },
+});
+```
+
+#### Remove `generateTypeScriptDefinitions`
+
+The option was never rendered by API pages, and it is gone with its `@fumari/json-schema-ts` dependency. Passing it is now a type error, nothing else changes.
+
+#### Client-safe package entry
+
+`generateFiles()` reads and writes files, so the package entry ships a stubbed build under the `browser` condition. Client components can import `createAsyncAPIRenderer()` and the hooks without pulling `node:fs` into the bundle.
+
+#### Highlighting out of the box
+
+`createAsyncAPIRenderer()` highlights code blocks with the full Shiki bundle, pass a smaller `shiki` factory to trim it.
+
+### Shared components of API pages
+
+#### Default page components
+
+`createOpenAPIRenderer()`, `createAsyncAPIRenderer()` and `createGraphQLRenderer()` fill the `Markdown`, `CodeBlock` and `Heading` components you didn't pass, rendering Markdown through Remark and code blocks through Shiki:
+
+```tsx
+createOpenAPIRenderer({
+  components: { SchemaUI, Operation },
+});
+```
+
+`shiki` defaults to the full bundle, `createOpenAPIBaseRenderer()` takes the factory you pass instead and leaves the bundle out.
+
+#### Installable UI
+
+The UI an API page renders through is now part of the installation, instead of being imported from the package:
+
+| Component                                                                                   | Installed at                               |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `Select`, `Input`                                                                           | `components/ui`, reusing the project's own |
+| `Accordion`, `Collapsible`, `Dialog`, `Popover`, `Spinner`, `SelectTabs`, playground inputs | `components/api/ui`                        |
+| anchor IDs of deep-linkable sections                                                        | `components/api/ui/auto-anchor`            |
+
+`Select` and `Input` follow the Shadcn UI API, so a project that already has them keeps its own. `@fumadocs/story` no longer ships a second copy of either.
+
+`labelVariants` moved to the installed `label` component, leaving the input a plain Shadcn-compatible primitive.
+
+The integrations share one implementation of these internally, instead of each keeping a copy: the selected server and its variables, the state of an async request, the coloured label of methods and kinds, and the plain-object check of both schema layers.
+
+The request pipeline of the playground stays in the package too, so an installed playground drives it instead of copying it: `encodeRequestData()`, `resolveMediaAdapter()`, `isMediaTypeSupported()` and the request data types come from `fumadocs-openapi/requests`, and `createBrowserFetcher()` with `usePlaygroundAuth()` from `fumadocs-openapi/playground`.
+
+### JSON Schema toolkit
+
+#### `@fumadocs/json-schema`
+
+The JSON Schema utilities of API pages are now their own package, with no Fumadocs dependencies:
+
+```ts
+import { dereference, matches, mergeAllOf, sample, stringify } from '@fumadocs/json-schema';
+import { bundle } from '@fumadocs/json-schema/bundle';
+```
+
+`bundle()` is a separate entry because it reads files and URLs, everything else runs in the browser.
+
+`@fumadocs/json-schema/react` renders a schema into the data an API page draws: `generateSchemaUI()` with the `SchemaData` and `InfoTag` types. It was in the Schema UI before, where every install copied it. A labelled tag can be `prose`, for values like a Markdown deprecation reason.
+
+They were `@fumadocs/api-docs/schema/*` before, and the API was cleaned up while moving:
+
+| Before                                         | Now                                    |
+| ---------------------------------------------- | -------------------------------------- |
+| `ParsedSchema`                                 | `JsonSchema`                           |
+| `NoReference` / `NoReferenceSwallow`           | `Dereferenced` / `DereferencedShallow` |
+| `dereferenceShallow(schema)`                   | `dereference(schema)`                  |
+| `matchesSchema(schema, value)`                 | `matches(schema, value)`               |
+| `typeMatches(value, type)`                     | `matchesType(value, type)`             |
+| `schemaToString(schema, FormatFlags.UseAlias)` | `stringify(schema, { alias: true })`   |
+
+#### Trim code usages and TypeScript definitions
+
+`createOpenAPIBaseRenderer()` from `fumadocs-openapi` registers no code usage generators and no TypeScript definitions, so a page built on it bundles only what you pass:
+
+```tsx
+import { createCodeUsageGeneratorRegistry } from 'fumadocs-openapi/requests/generators';
+import { curl } from 'fumadocs-openapi/requests/generators/curl';
+
+createOpenAPIBaseRenderer({
+  shiki,
+  codeUsages: createCodeUsageGeneratorRegistry().register(curl),
+  components: { ... },
+});
+```
+
+`createOpenAPIRenderer()` and `fumadocs-openapi/ui` register every language and TypeScript definitions for you.
+
+#### Remove `useStorageKey()`
+
+The hook returned `(name) => storageKeyPrefix + name`. Read the prefix from the page instead:
+
+```tsx
+const { storageKeyPrefix } = useOpenAPI();
+localStorage.getItem(`${storageKeyPrefix}my-key`);
+```
+
+`useAsyncAPI()` works the same way.
+
+#### `@fumadocs/api-docs` is no longer published
+
+It held the UI the integrations share, and that UI is now either bundled into them or installed with Fumadocs CLI, so nothing imports it by name any more. If you imported it directly:
+
+| Before                                     | Now                                                  |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `@fumadocs/api-docs/schema/*`              | `@fumadocs/json-schema`                              |
+| `@fumadocs/api-docs/components/schema*`    | `npx @fumadocs/cli add fumadocs/api-docs/schema`     |
+| `@fumadocs/api-docs/components/*` (the UI) | installed with the component that uses it            |
+| `@fumadocs/api-docs/i18n`                  | the integration's own `Translations` covers its keys |
+| `@fumadocs/api-docs/css/preset.css`        | already included by the integration's preset         |
+
+The CLI namespace is unchanged, `fumadocs/api-docs/schema` still installs the Schema UI.
+
+## @fumadocs/asyncapi@0.3.6
+
+### Mark packages side-effect free
+
+All packages now declare `sideEffects` in `package.json`, so bundlers can tree-shake unused modules. Packages shipping stylesheets list them as side effects to keep CSS imports.
+
+## @fumadocs/asyncapi@0.3.5
+
+### Replace `cnfast` with `cn`
+
+Internal refactor only.
+
+## @fumadocs/asyncapi@0.3.0
+
+### Redesign source API
+
+Content sources can hook into the static loader they are attached to, and dynamic sources can opt out of the loader's in-memory file cache.
+
+`configureStatic` runs when a source is attached to `loader()`, and again whenever `dynamicLoader()` builds a new static loader:
+
+```ts
+export function createMySource(): DynamicSource {
+  return {
+    cache: 'custom',
+    async files() {
+      return loadFiles();
+    },
+    configureStatic({ loader, source }) {
+      // `loader` is the created static loader
+      // `source` is the record key when using named sources
+    },
+    configure(loader, { source }) {
+      loader.invalidate();
+    },
+  };
+}
+```
+
+- `cache: 'memory'` (default): `files()` is called once until `invalidate()`.
+- `cache: 'custom'`: the source caches itself. `dynamicLoader()` re-runs `files()` on `get()` and rebuilds only when the file list is shallowly different (by identity).
+
+### Integrations
+
+GraphQL cross-links are generated from the attached loader instead of a `baseUrl` option on `staticSource()`. Local, OpenAPI, and AsyncAPI `dynamicSource()` use `cache: 'custom'` and reuse generated files by identity until `invalidate()`.
+
+Sanity now uses `cache: 'custom'` when given a `sanityFetch` from `next-sanity/live`, calling `invalidate()` in draft mode is no longer needed.
+
+### Cache the document proxy in `toStaticData`
+
+Matches `fumadocs-openapi`: the magic proxy is created once per document instead of once per generated page.
+
+## @fumadocs/asyncapi@0.2.0
+
+### Use `@scalar/json-magic` for dereferencing
+
+This will affect all raw access to OpenAPI/AsyncAPI documents, ensure to use `dereferenceShallow()` public API.
+
+### Migrate from `js-yaml` to `yaml`
+
+## @fumadocs/asyncapi@0.1.1
+
+### Fix minor UI inconsistencies
+
+More aligned with original styles.
+
+## @fumadocs/asyncapi@0.1.0
+
+### Default to Base UI
+
+Internal packages & templates now use Base UI rather than Radix UI.
+
+## @fumadocs/asyncapi@0.0.4
+
+### Migrate to `cnfast`
+
+Drop `tailwind-merge`.
+
+# @fumadocs/asyncapi
+
+## 0.0.2
+
+### Patch Changes
+
+- 5017289: Use stable `fuma-translate`
+- Updated dependencies [5017289]
+- Updated dependencies [7a77722]
+  - @fumadocs/api-docs@0.0.2
+  - fumadocs-ui@16.10.1
+  - fumadocs-core@16.10.1
+
+## 0.0.1
+
+### Patch Changes
+
+- 74102c5: Implement
+- Updated dependencies [9b9545f]
+- Updated dependencies [0cc1fac]
+- Updated dependencies [779efff]
+  - fumadocs-core@16.10.0
+  - fumadocs-ui@16.10.0

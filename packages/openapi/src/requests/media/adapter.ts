@@ -1,0 +1,284 @@
+import {
+  csharpRawString,
+  goString,
+  javaTextBlock,
+  jsTemplateLiteral,
+  pythonString,
+  rustString,
+} from 'shared-api/codegen';
+import { inputToString } from '@/requests/string-utils';
+import type { RequestData } from '@/requests/types';
+import { resolveMediaAdapter } from './resolve-adapter';
+// @ts-expect-error -- untyped
+import js2xml from 'xml-js/lib/js2xml';
+
+interface BaseContext {
+  /**
+   * Passed by your custom example generator, for your custom media adapter to receive.
+   */
+  customData?: Record<string, unknown>;
+}
+
+interface GoContext extends BaseContext {
+  lang: 'go';
+  addImport: (name: string) => void;
+}
+
+interface JavaScriptContext extends BaseContext {
+  lang: 'js';
+  addImport: (pkg: string, name: string) => void;
+}
+
+interface JavaContext extends BaseContext {
+  lang: 'java';
+  addImport: (specifier: string) => void;
+}
+
+interface CSharpContext extends BaseContext {
+  lang: 'csharp';
+  addImport: (specifier: string) => void;
+}
+
+export type MediaContext =
+  | JavaContext
+  | GoContext
+  | JavaScriptContext
+  | CSharpContext
+  | (BaseContext & { lang: string });
+
+export interface MediaAdapter {
+  /**
+   * encode data into specified media type for `fetch()`.
+   *
+   * Return the encoded form of `data.body` property.
+   */
+  encode: (data: { body: unknown }) => BodyInit;
+
+  /**
+   * generate code example for creating the body in a given programming language.
+   *
+   * @param data - request data.
+   * @param lang - name of programming language.
+   * @param ctx - context passed from the generator of programming language.
+   *
+   * @returns code that inits a `body` variable, or undefined if not supported (skip example for that language).
+   */
+  generateExample: (data: { body: unknown }, ctx: MediaContext) => string | undefined;
+}
+
+export const defaultAdapters = {
+  'application/json': {
+    encode(data) {
+      return JSON.stringify(data.body);
+    },
+    generateExample(data, ctx) {
+      return str(data.body, 'application/json', ctx);
+    },
+  },
+  'application/xml': {
+    encode(data) {
+      return js2xml(data.body as Record<string, unknown>, {
+        compact: true,
+        spaces: 2,
+      });
+    },
+    generateExample(data, ctx) {
+      return str(data.body, 'application/xml', ctx);
+    },
+  },
+  'application/x-ndjson': {
+    encode(data) {
+      if (Array.isArray(data.body)) {
+        return data.body.map((v) => JSON.stringify(v)).join('\n');
+      }
+
+      return JSON.stringify(data.body);
+    },
+    generateExample(data, ctx) {
+      return str(data.body, 'application/x-ndjson', ctx);
+    },
+  },
+  'text/plain': {
+    encode(data) {
+      return inputToString(data.body, 'text/plain');
+    },
+    generateExample(data, ctx) {
+      return str(data.body, 'text/plain', ctx);
+    },
+  },
+  'application/x-www-form-urlencoded': {
+    encode(data) {
+      if (typeof data.body !== 'object')
+        throw new Error(`Input value must be object, received: ${typeof data.body}`);
+
+      const params = new URLSearchParams();
+      for (const key in data.body) {
+        params.set(key, String(data.body[key as keyof object]));
+      }
+
+      return params;
+    },
+    generateExample(data, ctx) {
+      if (ctx.lang === 'js') {
+        return `const body = new URLSearchParams(${JSON.stringify(data.body, null, 2)})`;
+      }
+
+      return str(data.body, 'application/x-www-form-urlencoded', ctx);
+    },
+  },
+  'multipart/form-data': {
+    encode(data) {
+      const formData = new FormData();
+      const body = data.body as Record<string, unknown>;
+
+      if (typeof body !== 'object' || !body) {
+        throw new Error(`Unsupported body type: ${typeof body}, expected: object`);
+      }
+
+      for (const key in body) {
+        const prop = body[key];
+
+        if (prop === null || prop === undefined || Number.isNaN(prop)) continue;
+
+        // Arrays (multi-value field)
+        if (Array.isArray(prop)) {
+          for (const item of prop) {
+            if (item === null || item === undefined) continue;
+            if (item instanceof File) {
+              formData.append(key, item, item.name);
+            } else if (item instanceof Blob) {
+              formData.append(key, item, 'blob');
+            } else if (typeof item === 'object') {
+              formData.append(key, JSON.stringify(item));
+            } else {
+              formData.append(key, String(item));
+            }
+          }
+        }
+
+        // Single File
+        else if (prop instanceof File) {
+          formData.set(key, prop, prop.name);
+        }
+
+        // Single Blob
+        else if (prop instanceof Blob) {
+          formData.set(key, prop, 'blob');
+        }
+
+        // Any other object (stringify)
+        else if (typeof prop === 'object') {
+          formData.set(key, JSON.stringify(prop));
+        }
+
+        // Primitive types
+        else {
+          formData.set(key, String(prop));
+        }
+      }
+
+      return formData;
+    },
+    generateExample(data, ctx) {
+      const s: string[] = [];
+      const fields: [key: string, value: string][] = [];
+      for (const [key, value] of Object.entries(data.body as object)) {
+        if (value != null) fields.push([JSON.stringify(key), inputToString(value)]);
+      }
+
+      switch (ctx.lang) {
+        case 'js':
+          s.push('const body = new FormData();');
+          for (const [key, value] of fields) s.push(`body.set(${key}, ${JSON.stringify(value)})`);
+          break;
+        case 'python':
+          s.push('body = {');
+          for (const [key, value] of fields) s.push(`  ${key}: (None, ${JSON.stringify(value)}),`);
+          s.push('}');
+          break;
+        case 'go': {
+          const { addImport } = ctx as GoContext;
+          addImport('bytes');
+          addImport('mime/multipart');
+          s.push('body := new(bytes.Buffer)', 'mp := multipart.NewWriter(body)');
+          for (const [key, value] of fields) {
+            s.push(`mp.WriteField(${key}, ${JSON.stringify(value)})`);
+          }
+          s.push('mp.Close()');
+          break;
+        }
+        case 'csharp':
+          s.push('var body = new MultipartFormDataContent();');
+          for (const [key, value] of fields) {
+            s.push(`body.Add(new StringContent(${JSON.stringify(value)}), ${key});`);
+          }
+          break;
+        case 'rust':
+          s.push('let body = reqwest::multipart::Form::new()');
+          for (const [key, value] of fields) s.push(`  .text(${key}, ${JSON.stringify(value)})`);
+          s[s.length - 1] += ';';
+          break;
+      }
+
+      if (s.length > 0) return s.join('\n');
+    },
+  },
+  'application/octet-stream': {
+    encode(data) {
+      return data.body as BodyInit;
+    },
+    generateExample() {
+      // not supported
+      return undefined;
+    },
+  },
+} satisfies Record<string, MediaAdapter>;
+
+/**
+ * Generate the code that inits a `body` variable for the request body, `undefined` when unsupported.
+ */
+export function generateBodyExample(
+  data: RequestData,
+  adapters: Record<string, MediaAdapter>,
+  ctx: MediaContext,
+): string | undefined {
+  if (!data.body || !data.bodyMediaType) return;
+
+  return resolveMediaAdapter(data.bodyMediaType, adapters)?.generateExample(
+    data as { body: unknown },
+    ctx,
+  );
+}
+
+function str(
+  init: unknown,
+  mediaType:
+    | 'application/x-www-form-urlencoded'
+    | 'application/x-ndjson'
+    | 'application/json'
+    | 'application/xml'
+    | 'text/plain',
+  ctx: MediaContext,
+) {
+  if (ctx.lang === 'js' && mediaType === 'application/json') {
+    return `const body = JSON.stringify(${JSON.stringify(init, null, 2)})`;
+  }
+
+  const text = inputToString(init, mediaType);
+  switch (ctx.lang) {
+    case 'js':
+      return `const body = ${jsTemplateLiteral(text)}`;
+    case 'python':
+      return `body = ${pythonString(text)}`;
+    case 'go':
+      (ctx as GoContext).addImport('strings');
+      return `body := strings.NewReader(${goString(text)})`;
+    case 'java':
+      (ctx as JavaContext).addImport('java.net.http.HttpRequest.BodyPublishers');
+      return `var body = BodyPublishers.ofString(${javaTextBlock(text)});`;
+    case 'csharp':
+      return `var body = new StringContent(${csharpRawString(text)}, Encoding.UTF8, "${mediaType}");`;
+    case 'rust':
+      return `let body = ${rustString(text)};`;
+  }
+}

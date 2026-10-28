@@ -1,0 +1,117 @@
+## @fumadocs/json-schema@0.3.5
+
+### Schema UI links through unions
+
+Copied property links restore the selected `oneOf`/`anyOf` members and the schemas opened from them again, instead of staying at the root.
+
+Fix [#3732](https://github.com/fuma-nama/fumadocs/issues/3732)
+
+## @fumadocs/json-schema@0.3.4
+
+### Recursive schemas in `mergeAllOf()`
+
+- Recursive schemas no longer overflow, e.g. subtypes that extend a parent listing them in `oneOf` merge to the parent's keywords and their own.
+- Nested schemas defined by multiple members, like a property, are combined with `allOf` and merged when read.
+- Keywords of a composed schema win over its members, including `readOnly` and `writeOnly`.
+
+Fix [#3724](https://github.com/fuma-nama/fumadocs/issues/3724)
+
+## @fumadocs/json-schema@0.3.3
+
+### Info tags that open schemas
+
+- An `InfoTag` with `open: { name, $ref }` opens the schema `$ref` in Schema UI, like the type of a property.
+
+## @fumadocs/json-schema@0.3.2
+
+### Support `__proto__` as a property name
+
+- Fields named `__proto__` are stored as own properties, instead of changing the prototype of their parent object.
+- Samples and merged schemas keep properties named `__proto__`, `constructor` and `prototype`.
+
+## @fumadocs/json-schema@0.3.1
+
+### Faster API pages and search indexes
+
+- Schema UI generates the schemas it shows when they open, instead of every schema reachable from the root.
+- Inline schemas are identified by their position, links to their properties copied before this version no longer open them.
+- TypeScript definitions of bodies are generated when copied.
+- Search indexes take breadcrumbs from one walk of the page tree, instead of a search for each page.
+
+## @fumadocs/json-schema@0.3.0
+
+### Headless Schema UI
+
+`<SchemaUIProvider />` from `@fumadocs/json-schema/react/client` holds the state of a Schema UI: the schemas opened from properties, the selected members of unions, and links to a property. `useSchemaUI()` reads and navigates it.
+
+The Schema UI installed with Fumadocs CLI (`api-docs/schema`) is built on it, so the installed code is only UI.
+
+## @fumadocs/json-schema@0.2.0
+
+### JSON Schema toolkit
+
+#### `@fumadocs/json-schema`
+
+The JSON Schema utilities of API pages are now their own package, with no Fumadocs dependencies:
+
+```ts
+import { dereference, matches, mergeAllOf, sample, stringify } from '@fumadocs/json-schema';
+import { bundle } from '@fumadocs/json-schema/bundle';
+```
+
+`bundle()` is a separate entry because it reads files and URLs, everything else runs in the browser.
+
+`@fumadocs/json-schema/react` renders a schema into the data an API page draws: `generateSchemaUI()` with the `SchemaData` and `InfoTag` types. It was in the Schema UI before, where every install copied it. A labelled tag can be `prose`, for values like a Markdown deprecation reason.
+
+They were `@fumadocs/api-docs/schema/*` before, and the API was cleaned up while moving:
+
+| Before                                         | Now                                    |
+| ---------------------------------------------- | -------------------------------------- |
+| `ParsedSchema`                                 | `JsonSchema`                           |
+| `NoReference` / `NoReferenceSwallow`           | `Dereferenced` / `DereferencedShallow` |
+| `dereferenceShallow(schema)`                   | `dereference(schema)`                  |
+| `matchesSchema(schema, value)`                 | `matches(schema, value)`               |
+| `typeMatches(value, type)`                     | `matchesType(value, type)`             |
+| `schemaToString(schema, FormatFlags.UseAlias)` | `stringify(schema, { alias: true })`   |
+
+#### Trim code usages and TypeScript definitions
+
+`createOpenAPIBaseRenderer()` from `fumadocs-openapi` registers no code usage generators and no TypeScript definitions, so a page built on it bundles only what you pass:
+
+```tsx
+import { createCodeUsageGeneratorRegistry } from 'fumadocs-openapi/requests/generators';
+import { curl } from 'fumadocs-openapi/requests/generators/curl';
+
+createOpenAPIBaseRenderer({
+  shiki,
+  codeUsages: createCodeUsageGeneratorRegistry().register(curl),
+  components: { ... },
+});
+```
+
+`createOpenAPIRenderer()` and `fumadocs-openapi/ui` register every language and TypeScript definitions for you.
+
+#### Remove `useStorageKey()`
+
+The hook returned `(name) => storageKeyPrefix + name`. Read the prefix from the page instead:
+
+```tsx
+const { storageKeyPrefix } = useOpenAPI();
+localStorage.getItem(`${storageKeyPrefix}my-key`);
+```
+
+`useAsyncAPI()` works the same way.
+
+#### `@fumadocs/api-docs` is no longer published
+
+It held the UI the integrations share, and that UI is now either bundled into them or installed with Fumadocs CLI, so nothing imports it by name any more. If you imported it directly:
+
+| Before                                     | Now                                                  |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `@fumadocs/api-docs/schema/*`              | `@fumadocs/json-schema`                              |
+| `@fumadocs/api-docs/components/schema*`    | `npx @fumadocs/cli add fumadocs/api-docs/schema`     |
+| `@fumadocs/api-docs/components/*` (the UI) | installed with the component that uses it            |
+| `@fumadocs/api-docs/i18n`                  | the integration's own `Translations` covers its keys |
+| `@fumadocs/api-docs/css/preset.css`        | already included by the integration's preset         |
+
+The CLI namespace is unchanged, `fumadocs/api-docs/schema` still installs the Schema UI.

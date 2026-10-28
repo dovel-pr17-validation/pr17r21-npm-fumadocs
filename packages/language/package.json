@@ -1,0 +1,72 @@
+{
+  "name": "@fumadocs/language",
+  "version": "0.2.16",
+  "description": "Common language packs for Fumadocs",
+  "keywords": [
+    "documentation",
+    "fumadocs"
+  ],
+  "homepage": "https://fumadocs.dev",
+  "license": "MIT",
+  "author": "Fuma Nama",
+  "repository": "github:fuma-nama/fumadocs",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./zh-cn": "./dist/zh-cn.js",
+    "./zh-tw": "./dist/zh-tw.js",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rimraf dist",
+    "dev": "tsdown --watch --clean false",
+    "lint": "oxlint .",
+    "types:check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@fumadocs/asyncapi": "workspace:*",
+    "@fumadocs/graphql": "workspace:*",
+    "@fumadocs/story": "workspace:*",
+    "fumadocs-core": "workspace:*",
+    "fumadocs-openapi": "workspace:*",
+    "fumadocs-ui": "workspace:@fumadocs/base-ui@*",
+    "tsconfig": "workspace:*",
+    "tsdown": "0.23.1",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@fumadocs/asyncapi": "*",
+    "@fumadocs/graphql": "*",
+    "@fumadocs/story": "*",
+    "fumadocs-core": "*",
+    "fumadocs-openapi": "*",
+    "fumadocs-ui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@fumadocs/asyncapi": {
+      "optional": true
+    },
+    "@fumadocs/graphql": {
+      "optional": true
+    },
+    "@fumadocs/story": {
+      "optional": true
+    },
+    "fumadocs-core": {
+      "optional": true
+    },
+    "fumadocs-openapi": {
+      "optional": true
+    },
+    "fumadocs-ui": {
+      "optional": true
+    }
+  }
+}
