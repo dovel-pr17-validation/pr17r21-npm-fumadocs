@@ -46,7 +46,7 @@
     "remend": "^1.4.0"
   },
   "devDependencies": {
-    "@ai-sdk/react": "^4.0.152",
+    "@ai-sdk/react": "^4.0.158",
     "@types/hast": "^3.0.5",
     "@types/node": "26.6.5",
     "@types/react": "^19.3.0",
